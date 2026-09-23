@@ -21,15 +21,15 @@ jobs:
     if: ${{ !inputs.image_tag }}
     runs-on: ubuntu-latest        # 雲端 build，不吃 VM 資源
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Image name (GHCR 需全小寫)
         run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/api" >> "$GITHUB_ENV"
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ./apps/api
           push: true
@@ -44,9 +44,20 @@ jobs:
       IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
       ENV_FILE: /srv/myapp/.env
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Image name
         run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/api" >> "$GITHUB_ENV"
+      - name: Check env file
+        run: |
+          if [[ ! -r "$ENV_FILE" ]]; then
+            echo "::error title=找不到 $ENV_FILE::runner（$(whoami)@$(hostname)）讀不到 $ENV_FILE。請在這台機器上以 deploy 身分建立（chmod 600，內容參考 deploy/.env.example；步驟見 README「部署到 staging VM」），再按 Re-run failed jobs。"
+            exit 1
+          fi
+          if ! grep -q '^POSTGRES_PASSWORD=.' "$ENV_FILE"; then
+            echo "::error title=$ENV_FILE 設定不完整::$ENV_FILE 裡沒有設定 POSTGRES_PASSWORD（參考 deploy/.env.example）。"
+            exit 1
+          fi
+          echo "$ENV_FILE OK"
       - name: Login GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       - name: Deploy

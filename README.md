@@ -69,5 +69,16 @@ curl -s -X DELETE localhost:3000/items/1 -i
 
 見 ADR 的「VM 建置步驟」。重點：
 - VM 上建立 `/srv/myapp/.env`（依 `deploy/.env.example`，`chmod 600`，owner `deploy`）。
+
+  ```bash
+  sudo mkdir -p /srv/myapp && sudo chown deploy:deploy /srv/myapp
+  sudo -u deploy bash -c 'umask 077; cat > /srv/myapp/.env <<EOF
+  POSTGRES_USER=postgres
+  POSTGRES_PASSWORD=$(openssl rand -hex 16)
+  POSTGRES_DB=app
+  EOF'
+  ```
+
+  CD 的「Check env file」步驟會在部署前檢查這個檔案，缺少時直接失敗並提示。
 - self-hosted runner 註冊時帶 `--labels staging`。
 - 回滾：Actions → CD → Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。
