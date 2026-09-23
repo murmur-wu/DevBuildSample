@@ -17,6 +17,7 @@ services:
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 與 Node 版共用同一份機敏設定
     environment:
       DB_HOST: db
+      PATH_BASE: /dotnet                    # 對外網址 https://api-staging.heitang.info/dotnet/...
     ports: ["127.0.0.1:3001:8080"]          # 容器內 8080，只綁 localhost，對外交給 tunnel
     depends_on:
       db:

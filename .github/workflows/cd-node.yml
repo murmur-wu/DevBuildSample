@@ -31,4 +31,5 @@ jobs:
       compose_file: deploy/docker-compose.yml
       project: myapp
       port: 3000
+      path_base: /node
       image_tag: ${{ inputs.image_tag }}

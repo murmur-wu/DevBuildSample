@@ -15,7 +15,7 @@
 | compose / project | `deploy/docker-compose.yml` / `myapp` | `deploy/docker-compose.dotnet.yml` / `myapp-dotnet` |
 | 本機 port（容器內） | 3000（3000） | 3001（8080） |
 | GHCR image | `ghcr.io/murmur-wu/devbuildsample/api` | `ghcr.io/murmur-wu/devbuildsample/api-dotnet` |
-| 對外網址 | `https://api-staging.heitang.info` | `https://api-dotnet-staging.heitang.info` |
+| 對外網址（PATH_BASE） | `https://api-staging.heitang.info/node/...`（`/node`） | `https://api-staging.heitang.info/dotnet/...`（`/dotnet`） |
 | CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml` / `cd-dotnet.yml` |
 
 **兩版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，另一版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒、.NET 微秒）、`GET /` 的 `name`（`api` / `api-dotnet`）。
@@ -33,7 +33,7 @@ deploy/docker-compose.dotnet.yml          .NET 版部署用（獨立的 DB 容�
 deploy/docker-compose*.local.yml          本地 override：改為原始碼 build
 deploy/.env.example                       機敏設定範本（兩版共用 /srv/myapp/.env）
 scripts/local-up.sh                       本地一鍵啟動：[node|dotnet] [up|down|clean|logs]
-scripts/smoke-test.sh [URL]               端到端測試（19 項），兩版共用
+scripts/smoke-test.sh [URL]               端到端測試（20 項），兩版共用；URL 可帶路徑前綴
 scripts/vm/setup-tunnel.sh      部署主機：Cloudflare Tunnel（一般使用者執行）
 scripts/vm/setup-firewall.sh    部署主機：ufw，預設保留 SSH（sudo 執行）
 scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安全更新（sudo 執行）
@@ -67,7 +67,7 @@ actionlint                                  # 改 workflow 後檢查（設定在
 - compose project 名稱：Node `myapp`、.NET `myapp-dotnet`（本地測試用 `myapp-local`、`myapp-dotnet-local`）。兩者各有自己的 DB 容器與 volume，互不影響。
 - CI/CD 依路徑觸發（見各 workflow 的 `paths`）：改 `apps/api-dotnet/` 只跑 .NET 的 CI/CD；改 `scripts/smoke-test.sh` 或 `_build-deploy.yml` 會兩邊都跑。兩個 CD 的 deploy 都在同一個 runner 上，會排隊依序執行。
 - 機敏設定：VM 上的 `/srv/myapp/.env`（owner `deploy`、`chmod 600`），**永不進 git**。必須包含 `POSTGRES_PASSWORD`。
-- 服務只綁 127.0.0.1，對外走同一個 Cloudflare Tunnel `myapp-staging`：`https://api-staging.heitang.info` → `127.0.0.1:3000`、`https://api-dotnet-staging.heitang.info` → `127.0.0.1:3001`。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
+- 服務只綁 127.0.0.1，對外走 Cloudflare Tunnel `myapp-staging`，同一個網址用路徑分流：`https://api-staging.heitang.info/node/...` → `127.0.0.1:3000`、`/dotnet/...` → `127.0.0.1:3001`，其他路徑 404。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
 - 容器 log 上限在兩個 compose 檔的 `x-logging`；新增服務時要加上 `logging: *logging`。
 - image tag 使用 git SHA；回滾：Actions → CD (Node) 或 CD (.NET) → Run workflow，`image_tag` 填舊 SHA（會跳過 build）。
 - CD 部署後依序跑 `/health` 驗證與 smoke test；`/health` 回傳的 `version` 應等於部署的 commit SHA。
@@ -80,7 +80,9 @@ actionlint                                  # 改 workflow 後檢查（設定在
 - **.NET 容器內 port 是 8080**：.NET 8 起 aspnet image 預設 8080（Dockerfile 明確設 `ASPNETCORE_HTTP_PORTS=8080`），compose 對應成主機 3001。healthcheck 打的是容器內 8080。
 - **.NET runtime image 要用 alpine 版**：標準 `aspnet:10.0` 沒有 curl/wget，healthcheck 會失敗；`aspnet:10.0-alpine` 有 busybox wget。
 - **setup-tunnel.sh 每次都要列出全部 hostname**：config 依參數整份重寫，只列一個會把另一個的路由刪掉。
-- **Cloudflare 子網域只能一層**：`api-dotnet-staging.heitang.info` 可以，`api.dotnet.heitang.info` 不在免費 Universal SSL 憑證範圍內。
+- **cloudflared 轉送時不會去掉路徑前綴**：兩版都靠環境變數 `PATH_BASE`（compose 設定）去掉 `/node`、`/dotnet`。沒帶前綴的請求也要照常處理（本機、healthcheck、CD 的 Verify 都不帶前綴）。`Location` header 要帶回前綴，smoke test 會檢查。
+- **.NET 的 `UsePathBase` 後面必須明確呼叫 `UseRouting()`**：Minimal API 預設在最前面自動加 routing，否則比對到的是還帶前綴的路徑，全部 404。
+- **Cloudflare 子網域只能一層**：若改用子網域分流，`a.heitang.info` 可以，`api.dotnet.heitang.info` 不在免費 Universal SSL 憑證範圍內。
 - **`docker compose up --wait` 需要 healthcheck**：api 與 db 都已定義，新增服務時也要加。
 - **不要用 `POSTGRES_PASSWORD_FILE`** 而不定義 compose secrets，postgres 會無法啟動；目前從 `env_file` 讀 `POSTGRES_PASSWORD`。
 - **cloudflared 的憑證位置**：`tunnel login/create` 以一般使用者執行，憑證在該使用者的 `~/.cloudflared/`；以 root 跑的服務讀不到，所以 `setup-tunnel.sh` 會複製到 `/etc/cloudflared/`，並用 `sudo cloudflared --config /etc/cloudflared/config.yml service install`。

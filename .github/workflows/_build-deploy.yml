@@ -25,6 +25,10 @@ on:
         description: 主機上 127.0.0.1 的對外 port
         type: number
         required: true
+      path_base:
+        description: 對外網址的路徑前綴（與 compose 的 PATH_BASE 相同），例如 /node、/dotnet
+        type: string
+        required: true
       image_tag:
         description: 回滾用的舊 git SHA；空白表示建置並部署目前 commit
         type: string
@@ -90,6 +94,8 @@ jobs:
         run: curl -fsS "$BASE_URL/health"
       - name: Smoke test
         run: ./scripts/smoke-test.sh "$BASE_URL"
+      - name: Smoke test（帶路徑前綴，模擬經 tunnel 的請求）
+        run: ./scripts/smoke-test.sh "$BASE_URL${{ inputs.path_base }}"
       - name: Logs on failure
         if: failure()
         run: $COMPOSE logs --no-color --tail 100

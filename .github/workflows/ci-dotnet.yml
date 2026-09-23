@@ -43,6 +43,8 @@ jobs:
         run: ./scripts/local-up.sh dotnet
       - name: Smoke test
         run: ./scripts/smoke-test.sh http://127.0.0.1:3001
+      - name: Smoke test（帶路徑前綴 /dotnet）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3001/dotnet
       - name: Logs on failure
         if: failure()
         run: ./scripts/local-up.sh dotnet logs

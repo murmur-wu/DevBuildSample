@@ -31,6 +31,8 @@ jobs:
         run: ./scripts/local-up.sh node
       - name: Smoke test
         run: ./scripts/smoke-test.sh http://127.0.0.1:3000
+      - name: Smoke test（帶路徑前綴 /node）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3000/node
       - name: Logs on failure
         if: failure()
         run: ./scripts/local-up.sh node logs

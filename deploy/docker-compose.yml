@@ -16,6 +16,7 @@ services:
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git
     environment:
       DB_HOST: db
+      PATH_BASE: /node                      # 對外網址 https://api-staging.heitang.info/node/...
     ports: ["127.0.0.1:3000:3000"]          # 只綁 localhost，對外交給 tunnel
     depends_on:
       db:

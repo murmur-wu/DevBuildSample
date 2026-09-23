@@ -7,10 +7,10 @@
 | 原始碼 | `apps/api/`（Node 22） | `apps/api-dotnet/`（.NET 10、ASP.NET Core Minimal API） |
 | 本機 port | 3000 | 3001 |
 | 資料庫 | 各自一個 PostgreSQL 17 容器與 volume | 同左 |
-| 對外網址 | `https://api-staging.heitang.info` | `https://api-dotnet-staging.heitang.info` |
+| 對外網址 | `https://api-staging.heitang.info/node/...` | `https://api-staging.heitang.info/dotnet/...` |
 | CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml`（含 `dotnet test`）/ `cd-dotnet.yml` |
 
-兩者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，反之亦然。
+兩者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，反之亦然。
 
 部署採 pull-based CD：GitHub Actions 雲端 build → GHCR → VM 上的 self-hosted runner `docker compose pull && up -d`。架構決策見 [docs/adr/0001-pull-based-deploy.md](docs/adr/0001-pull-based-deploy.md)。
 
@@ -54,10 +54,11 @@ git clone https://github.com/murmur-wu/DevBuildSample.git && cd DevBuildSample
 # → 首次會自動產生 deploy/.env（隨機 DB 密碼），build image，等 healthcheck 通過
 # → 最後印出 {"status":"ok","db":"ok","version":"local"} 即成功
 
-# 3. 跑 smoke test（19 項檢查，全過會 exit 0）
+# 3. 跑 smoke test（20 項檢查，全過會 exit 0）
 ./scripts/smoke-test.sh                          # 預設打 Node 版 http://127.0.0.1:3000
 ./scripts/smoke-test.sh http://127.0.0.1:3001    # .NET 版
-./scripts/smoke-test.sh https://api-staging.heitang.info   # 也可以打其他環境
+./scripts/smoke-test.sh http://127.0.0.1:3001/dotnet    # 帶路徑前綴（模擬經 tunnel 的請求）
+./scripts/smoke-test.sh https://api-staging.heitang.info/dotnet   # 也可以打其他環境
 
 # 4. 其他（app 參數：node 或 dotnet）
 ./scripts/local-up.sh dotnet logs    # 看 log
@@ -122,14 +123,23 @@ curl -s -X DELETE localhost:3000/items/1 -i
 
 ```bash
 ./scripts/vm/setup-tunnel.sh \
-  api-staging.heitang.info=http://127.0.0.1:3000 \
-  api-dotnet-staging.heitang.info=http://127.0.0.1:3001
+  api-staging.heitang.info/node=http://127.0.0.1:3000 \
+  api-staging.heitang.info/dotnet=http://127.0.0.1:3001
 ```
 
-- 每次都要列出**全部**要對外的 hostname：config 會依參數整份重寫，沒列到的路由會被移除。
-- `=ORIGIN` 省略時為 `http://127.0.0.1:3000`；tunnel 名稱預設 `myapp-staging`（環境變數 `TUNNEL_NAME` 可覆寫）。
+同一個網址用路徑前綴分流：
+
+```
+https://api-staging.heitang.info/node/items    → Node（127.0.0.1:3000）
+https://api-staging.heitang.info/dotnet/items  → .NET（127.0.0.1:3001）
+https://api-staging.heitang.info/其他路徑       → 404
+```
+
+- **cloudflared 轉送時不會去掉前綴**：`/dotnet/items` 送到 .NET 時路徑仍是 `/dotnet/items`。所以兩個服務都用環境變數 `PATH_BASE`（設在 compose 檔）自己去掉前綴；沒帶前綴的請求（本機、healthcheck）照常處理。
+- 每次都要列出**全部**路由：config 會依參數整份重寫，沒列到的路由會被移除。
+- 參數格式 `HOSTNAME[/PATH][=ORIGIN]`：`/PATH` 比對 `/PATH` 與 `/PATH/...`（不會誤中 `/PATHx`）；`=ORIGIN` 省略時為 `http://127.0.0.1:3000`；tunnel 名稱預設 `myapp-staging`（環境變數 `TUNNEL_NAME` 可覆寫）。
 - 前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。
-- 子網域只能一層（`api-dotnet-staging.heitang.info`），`api.dotnet.heitang.info` 這種兩層的不在 Cloudflare 免費 SSL 憑證範圍內。
+- 若改用不同子網域分流（例如 `a.heitang.info=...`），子網域只能一層；`api.dotnet.heitang.info` 這種兩層的不在 Cloudflare 免費 SSL 憑證範圍內。
 
 腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
 

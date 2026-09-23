@@ -31,4 +31,5 @@ jobs:
       compose_file: deploy/docker-compose.dotnet.yml
       project: myapp-dotnet
       port: 3001
+      path_base: /dotnet
       image_tag: ${{ inputs.image_tag }}

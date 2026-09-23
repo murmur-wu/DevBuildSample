@@ -29,6 +29,13 @@ var app = builder.Build();
 app.UseExceptionHandler(e => e.Run(ctx =>
     Error(500, "internal error").ExecuteAsync(ctx)));
 
+// 對外經 tunnel 時網址帶前綴（例如 /dotnet），cloudflared 不會去掉，所以用 UsePathBase 去掉；
+// 沒帶前綴的請求（本機、healthcheck）照常處理。UsePathBase 之後必須明確呼叫 UseRouting，
+// 否則 Minimal API 會在最前面自動加上 routing，比對到的是還帶著前綴的路徑。
+if (Environment.GetEnvironmentVariable("PATH_BASE") is { Length: > 0 } pathBase)
+    app.UsePathBase(pathBase.TrimEnd('/'));
+app.UseRouting();
+
 app.MapGet("/health", async (ItemStore store) =>
 {
     try
@@ -51,7 +58,7 @@ app.MapPost("/items", async (HttpRequest req, ItemStore store) =>
     var (input, error) = await ReadItemInputAsync(req);
     if (error is not null) return error;
     var item = await store.CreateAsync(input!);
-    return Results.Created($"/items/{item.Id}", item);
+    return Results.Created($"{req.PathBase}/items/{item.Id}", item);
 });
 
 app.MapGet("/items/{id}", async (string id, ItemStore store) =>
