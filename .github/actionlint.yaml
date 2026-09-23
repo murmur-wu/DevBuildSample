@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # buildserver 上的 cd-vm（見 CLAUDE.md）
+  labels:
+    - staging

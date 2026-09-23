@@ -1,5 +1,6 @@
-# Node 版部署用 compose（compose project：myapp）：image 由 CI 推到 GHCR，VM 上只做 pull + up。
-# 本地測試請用 scripts/local-up.sh（會疊加 docker-compose.local.yml 改成本地 build）。
+# .NET 版部署用 compose（compose project：myapp-dotnet）。與 Node 版（docker-compose.yml）完全獨立：
+# 各自的 DB 容器與 volume，互不影響；對外 port 3001（Node 為 3000）。
+# 本地測試請用 scripts/local-up.sh dotnet（會疊加 docker-compose.dotnet.local.yml 改成本地 build）。
 
 # 容器 log 上限：每個服務最多 3 個 10MB 檔，避免 log 把磁碟吃滿
 x-logging: &logging
@@ -10,21 +11,21 @@ x-logging: &logging
 
 services:
   api:
-    image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api}:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api-dotnet}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     logging: *logging
-    env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git
+    env_file: ${ENV_FILE:-/srv/myapp/.env}   # 與 Node 版共用同一份機敏設定
     environment:
       DB_HOST: db
-    ports: ["127.0.0.1:3000:3000"]          # 只綁 localhost，對外交給 tunnel
+    ports: ["127.0.0.1:3001:8080"]          # 容器內 8080，只綁 localhost，對外交給 tunnel
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 3s
-      start_period: 10s
+      start_period: 15s
       retries: 3
 
   db:

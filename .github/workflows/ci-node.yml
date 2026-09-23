@@ -1,0 +1,39 @@
+name: CI (Node)
+on:
+  pull_request:
+    paths:
+      - apps/api/**
+      - deploy/docker-compose.yml
+      - deploy/docker-compose.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-node.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - deploy/docker-compose.yml
+      - deploy/docker-compose.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-node.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh node
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3000
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh node logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh node clean

@@ -1,0 +1,34 @@
+name: CD (Node)
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - deploy/docker-compose.yml
+      - scripts/smoke-test.sh
+      - .github/workflows/cd-node.yml
+      - .github/workflows/_build-deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 回滾用：填舊的 git SHA，只跑 deploy
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging-node
+  cancel-in-progress: false
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      image_name: api
+      context: ./apps/api
+      compose_file: deploy/docker-compose.yml
+      project: myapp
+      port: 3000
+      image_tag: ${{ inputs.image_tag }}

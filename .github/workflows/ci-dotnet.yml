@@ -1,0 +1,51 @@
+name: CI (.NET)
+on:
+  pull_request:
+    paths:
+      - apps/api-dotnet/**
+      - deploy/docker-compose.dotnet.yml
+      - deploy/docker-compose.dotnet.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-dotnet.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api-dotnet/**
+      - deploy/docker-compose.dotnet.yml
+      - deploy/docker-compose.dotnet.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-dotnet.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: dotnet test（在 .NET 10 SDK 容器中執行，與本機相同）
+        run: |
+          docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            dotnet test --logger "console;verbosity=normal"
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh dotnet
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3001
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh dotnet logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh dotnet clean

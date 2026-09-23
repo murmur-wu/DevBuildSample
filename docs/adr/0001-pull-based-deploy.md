@@ -16,7 +16,7 @@ Staging 後端跑在單台 Ubuntu VM。希望 VM 不對外開任何 port（含 S
 
 ## 回滾
 
-Actions → CD → Run workflow，`image_tag` 填舊 SHA。build job 會被跳過，deploy job 直接 pull 該 SHA 的 image。
+Actions → CD (Node) 或 CD (.NET) → Run workflow，`image_tag` 填舊 SHA。build job 會被跳過，deploy job 直接 pull 該 SHA 的 image。
 
 ## 後果
 
@@ -29,5 +29,5 @@ Actions → CD → Run workflow，`image_tag` 填舊 SHA。build job 會被跳�
 1. 安裝 Docker Engine（見 README）。
 2. `useradd -m -s /bin/bash deploy && usermod -aG docker deploy`；`mkdir -p /srv/myapp && chown deploy:deploy /srv/myapp`；建立 `/srv/myapp/.env`。
 3. 以 `deploy` 身分安裝 runner：`./config.sh --url https://github.com/murmur-wu/DevBuildSample --token <TOKEN> --name cd-vm --labels staging --unattended`，再 `sudo ./svc.sh install deploy && sudo ./svc.sh start`。
-4. cloudflared：`./scripts/vm/setup-tunnel.sh api-staging.heitang.info`（一般使用者執行）。確認 `https://api-staging.heitang.info/health` 正常後，`sudo ./scripts/vm/setup-firewall.sh`（預設保留 SSH）。
+4. cloudflared：`./scripts/vm/setup-tunnel.sh api-staging.heitang.info=http://127.0.0.1:3000 api-dotnet-staging.heitang.info=http://127.0.0.1:3001`（一般使用者執行）。確認兩個 `https://<hostname>/health` 都正常後，`sudo ./scripts/vm/setup-firewall.sh`（預設保留 SSH）。
 5. 維運：`sudo ./scripts/vm/setup-maintenance.sh`（每週 Docker 清理、swap、unattended-upgrades）；容器 log 上限在 compose 內。
