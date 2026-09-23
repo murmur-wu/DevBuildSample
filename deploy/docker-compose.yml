@@ -1,4 +1,4 @@
-# 部署用 compose：image 由 CI 推到 GHCR，VM 上只做 pull + up。
+# Node 版部署用 compose（compose project：myapp）：image 由 CI 推到 GHCR，VM 上只做 pull + up。
 # 本地測試請用 scripts/local-up.sh（會疊加 docker-compose.local.yml 改成本地 build）。
 
 # 容器 log 上限：每個服務最多 3 個 10MB 檔，避免 log 把磁碟吃滿
@@ -16,6 +16,7 @@ services:
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git
     environment:
       DB_HOST: db
+      PATH_BASE: /node                      # 對外網址 https://api-staging.heitang.info/node/...
     ports: ["127.0.0.1:3000:3000"]          # 只綁 localhost，對外交給 tunnel
     depends_on:
       db:

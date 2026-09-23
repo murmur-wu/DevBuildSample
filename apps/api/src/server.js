@@ -5,6 +5,9 @@ const port = Number(process.env.PORT ?? 3000);
 const version = process.env.APP_VERSION ?? 'dev';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_NAME_LENGTH = 200;
+// 對外經 tunnel 時網址帶前綴（例如 /node），cloudflared 不會去掉，所以在這裡去掉；
+// 沒帶前綴的請求（本機、healthcheck）照常處理。與 ASP.NET Core 的 UsePathBase 行為相同。
+const PATH_BASE = (process.env.PATH_BASE ?? '').replace(/\/+$/, '');
 
 const pool = new pg.Pool({
   host: process.env.DB_HOST ?? 'db',
@@ -79,7 +82,14 @@ async function migrate() {
 
 const ITEM_COLUMNS = 'id, name, done, created_at, updated_at';
 
-async function handleItems(req, res, id) {
+function splitPathBase(pathname) {
+  if (PATH_BASE && (pathname === PATH_BASE || pathname.startsWith(`${PATH_BASE}/`))) {
+    return { base: PATH_BASE, path: pathname.slice(PATH_BASE.length) || '/' };
+  }
+  return { base: '', path: pathname };
+}
+
+async function handleItems(req, res, id, base) {
   if (id === undefined) {
     if (req.method === 'GET') {
       const { rows } = await pool.query(`SELECT ${ITEM_COLUMNS} FROM items ORDER BY id`);
@@ -91,7 +101,7 @@ async function handleItems(req, res, id) {
         `INSERT INTO items (name, done) VALUES ($1, $2) RETURNING ${ITEM_COLUMNS}`,
         [name, done],
       );
-      res.setHeader('location', `/items/${rows[0].id}`);
+      res.setHeader('location', `${base}/items/${rows[0].id}`);
       return send(res, 201, rows[0]);
     }
     throw new HttpError(405, 'method not allowed');
@@ -119,7 +129,7 @@ async function handleItems(req, res, id) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, 'http://localhost');
+  const { base, path: pathname } = splitPathBase(new URL(req.url, 'http://localhost').pathname);
   try {
     if (req.method === 'GET' && pathname === '/health') {
       try {
@@ -133,7 +143,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { name: 'api', version });
     }
     const match = pathname.match(/^\/items(?:\/([^/]+))?\/?$/);
-    if (match) return await handleItems(req, res, match[1]);
+    if (match) return await handleItems(req, res, match[1], base);
     throw new HttpError(404, 'not found');
   } catch (err) {
     if (err instanceof HttpError) return send(res, err.status, { error: err.message });

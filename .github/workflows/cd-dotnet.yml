@@ -1,0 +1,35 @@
+name: CD (.NET)
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api-dotnet/**
+      - deploy/docker-compose.dotnet.yml
+      - scripts/smoke-test.sh
+      - .github/workflows/cd-dotnet.yml
+      - .github/workflows/_build-deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 回滾用：填舊的 git SHA，只跑 deploy
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging-dotnet
+  cancel-in-progress: false
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      image_name: api-dotnet
+      context: ./apps/api-dotnet
+      compose_file: deploy/docker-compose.dotnet.yml
+      project: myapp-dotnet
+      port: 3001
+      path_base: /dotnet
+      image_tag: ${{ inputs.image_tag }}

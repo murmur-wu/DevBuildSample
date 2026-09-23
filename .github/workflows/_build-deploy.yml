@@ -1,0 +1,104 @@
+# 共用的 build + deploy 流程，由 cd-node.yml、cd-dotnet.yml 呼叫。
+# build：GitHub 雲端建置 image 推到 GHCR（tag = git SHA）；有 image_tag（回滾）時跳過。
+# deploy：在 self-hosted runner（label staging）上 pull + up，再跑 /health 與 smoke test。
+name: build-deploy
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: GHCR 上的 image 名稱，例如 api、api-dotnet
+        type: string
+        required: true
+      context:
+        description: docker build context，例如 ./apps/api
+        type: string
+        required: true
+      compose_file:
+        type: string
+        required: true
+      project:
+        description: compose project 名稱，例如 myapp、myapp-dotnet
+        type: string
+        required: true
+      port:
+        description: 主機上 127.0.0.1 的對外 port
+        type: number
+        required: true
+      path_base:
+        description: 對外網址的路徑前綴（與 compose 的 PATH_BASE 相同），例如 /node、/dotnet
+        type: string
+        required: true
+      image_tag:
+        description: 回滾用的舊 git SHA；空白表示建置並部署目前 commit
+        type: string
+        default: ""
+
+jobs:
+  build:
+    if: ${{ !inputs.image_tag }}
+    runs-on: ubuntu-latest        # 雲端 build，不吃 VM 資源
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Image name (GHCR 需全小寫)
+        run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_name }}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          push: true
+          build-args: APP_VERSION=${{ github.sha }}
+          tags: ${{ env.IMAGE_REPO }}:${{ github.sha }}
+
+  deploy:
+    needs: build
+    if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: [self-hosted, staging]   # ← 指到 buildserver 上的 cd-vm
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+      ENV_FILE: /srv/myapp/.env
+      COMPOSE: docker compose -p ${{ inputs.project }} -f ${{ inputs.compose_file }}
+      BASE_URL: http://127.0.0.1:${{ inputs.port }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Image name
+        run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_name }}" >> "$GITHUB_ENV"
+      - name: Check env file
+        run: |
+          if [[ ! -r "$ENV_FILE" ]]; then
+            echo "::error title=找不到 $ENV_FILE::runner（$(whoami)@$(hostname)）讀不到 $ENV_FILE。請在這台機器上以 deploy 身分建立（chmod 600，內容參考 deploy/.env.example；步驟見 README「部署到 staging VM」），再按 Re-run failed jobs。"
+            exit 1
+          fi
+          if ! grep -q '^POSTGRES_PASSWORD=.' "$ENV_FILE"; then
+            echo "::error title=$ENV_FILE 設定不完整::$ENV_FILE 裡沒有設定 POSTGRES_PASSWORD（參考 deploy/.env.example）。"
+            exit 1
+          fi
+          echo "$ENV_FILE OK"
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Deploy
+        run: |
+          $COMPOSE pull
+          $COMPOSE up -d --wait
+      - name: Verify
+        run: curl -fsS "$BASE_URL/health"
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh "$BASE_URL"
+      - name: Smoke test（帶路徑前綴，模擬經 tunnel 的請求）
+        run: ./scripts/smoke-test.sh "$BASE_URL${{ inputs.path_base }}"
+      - name: Logs on failure
+        if: failure()
+        run: $COMPOSE logs --no-color --tail 100
+      - name: Logout GHCR
+        if: always()
+        run: docker logout ghcr.io

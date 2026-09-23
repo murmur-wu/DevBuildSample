@@ -1,21 +1,56 @@
 #!/usr/bin/env bash
-# 第 5 步：安裝 cloudflared，建立 Cloudflare Tunnel，把 https://<HOSTNAME> 轉到本機 127.0.0.1:3000。
+# 第 5 步：安裝 cloudflared，建立 Cloudflare Tunnel，把 https://<HOSTNAME> 轉到本機服務。
 # 在部署主機（buildserver）上，以有 sudo 權限的一般使用者執行（不要用 sudo 執行整支腳本）：
-#   ./scripts/vm/setup-tunnel.sh <HOSTNAME> [TUNNEL_NAME]
-#   例：./scripts/vm/setup-tunnel.sh api-staging.heitang.info
-# HOSTNAME 必填，其網域必須已在你的 Cloudflare 帳號中；子網域（如 api-staging）不用先建，腳本會自動建立 CNAME。
-# TUNNEL_NAME 預設 myapp-staging。
-# 可重複執行：已完成的步驟會略過，config 會以目前參數重寫並重啟服務。
+#   ./scripts/vm/setup-tunnel.sh <HOSTNAME[/PATH][=ORIGIN]>...
+#   例（同一個網址，用路徑分流）：
+#     ./scripts/vm/setup-tunnel.sh \
+#       api-staging.heitang.info/node=http://127.0.0.1:3000 \
+#       api-staging.heitang.info/dotnet=http://127.0.0.1:3001
+#   例（不同子網域）：
+#     ./scripts/vm/setup-tunnel.sh a.heitang.info=http://127.0.0.1:3000 b.heitang.info=http://127.0.0.1:3001
+# - 每次執行都要列出「全部」要對外的路由：config 會依參數整份重寫，沒列到的路由會被移除。
+# - /PATH 會比對 /PATH 本身與 /PATH/...；cloudflared 轉送時「不會」去掉前綴，服務要自己處理（本專案用 PATH_BASE）。
+# - 沒有路由符合的請求回 404；ORIGIN 省略時為 http://127.0.0.1:3000。
+# - 網域必須已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。
+#   若用子網域分流，子網域只能一層（a.heitang.info 可以；api.dotnet.heitang.info 不在免費 SSL 憑證範圍內）。
+# - tunnel 名稱預設 myapp-staging，可用環境變數 TUNNEL_NAME 覆寫。
+# 可重複執行：已完成的步驟會略過。
 set -euo pipefail
 
-if [[ $# -lt 1 || "$1" != *.* ]]; then
-  echo "用法：$0 <HOSTNAME> [TUNNEL_NAME]   例：$0 api-staging.heitang.info" >&2
-  exit 1
-fi
-HOSTNAME_="$1"
-ZONE="$(awk -F. '{print $(NF-1)"."$NF}' <<<"$HOSTNAME_")"
-TUNNEL_NAME="${2:-myapp-staging}"
-ORIGIN="${ORIGIN:-http://127.0.0.1:3000}"
+usage="用法：$0 <HOSTNAME[/PATH][=ORIGIN]>...
+  例：$0 api-staging.heitang.info/node=http://127.0.0.1:3000 api-staging.heitang.info/dotnet=http://127.0.0.1:3001"
+[[ $# -ge 1 ]] || { echo "$usage" >&2; exit 1; }
+
+HOSTS=()     # 每條路由的 hostname
+PATHS=()     # 每條路由的路徑前綴（可為空）
+ORIGINS=()   # 每條路由的本機服務
+for arg in "$@"; do
+  target="${arg%%=*}"
+  origin="http://127.0.0.1:3000"
+  [[ "$arg" == *=* ]] && origin="${arg#*=}"
+  host="${target%%/*}"
+  path=""
+  [[ "$target" == */* ]] && path="/${target#*/}"
+  path="${path%/}"
+  if [[ "$host" != *.* || "$origin" != http*://* || ! "$path" =~ ^(/[A-Za-z0-9._-]+)*$ ]]; then
+    echo "參數格式不對：$arg" >&2
+    echo "$usage" >&2
+    exit 1
+  fi
+  HOSTS+=("$host")
+  PATHS+=("$path")
+  ORIGINS+=("$origin")
+done
+# DNS 只需要每個 hostname 設定一次
+mapfile -t UNIQUE_HOSTS < <(printf '%s\n' "${HOSTS[@]}" | awk '!seen[$0]++')
+ZONE="$(awk -F. '{print $(NF-1)"."$NF}' <<<"${HOSTS[0]}")"
+for host in "${UNIQUE_HOSTS[@]}"; do
+  if [[ "$host" != *".$ZONE" ]]; then
+    echo "所有 hostname 必須在同一個網域（$ZONE）下：$host" >&2
+    exit 1
+  fi
+done
+TUNNEL_NAME="${TUNNEL_NAME:-myapp-staging}"
 ETC_DIR=/etc/cloudflared
 CONFIG="$ETC_DIR/config.yml"
 
@@ -70,20 +105,36 @@ echo "憑證：$CRED_DST（root，600）"
 
 step "4/6 寫入 $CONFIG"
 sudo install -d -m 755 "$ETC_DIR"
-sudo tee "$CONFIG" >/dev/null <<EOF
-# 由 scripts/vm/setup-tunnel.sh 產生，修改後執行 sudo systemctl restart cloudflared
-tunnel: $TUNNEL_ID
-credentials-file: $CRED_DST
-ingress:
-  - hostname: $HOSTNAME_
-    service: $ORIGIN
-  - service: http_status:404
-EOF
+{
+  echo "# 由 scripts/vm/setup-tunnel.sh 產生，修改後執行 sudo systemctl restart cloudflared"
+  echo "tunnel: $TUNNEL_ID"
+  echo "credentials-file: $CRED_DST"
+  echo "ingress:"
+  # cloudflared 由上往下比對：先寫帶路徑的規則，再寫不帶路徑的，避免同一個 hostname 的路由被整個攔走
+  for pass in with-path without-path; do
+    for i in "${!HOSTS[@]}"; do
+      if [[ -n "${PATHS[$i]}" ]]; then
+        [[ $pass == with-path ]] || continue
+        echo "  - hostname: ${HOSTS[$i]}"
+        # 比對 /PATH 本身與 /PATH/...（不會誤中 /PATHx）；「.」跳脫成 regex 字面值；YAML 單引號內不處理跳脫
+        echo "    path: '^${PATHS[$i]//./\\.}(/|\$)'"
+      else
+        [[ $pass == without-path ]] || continue
+        echo "  - hostname: ${HOSTS[$i]}"
+      fi
+      echo "    service: ${ORIGINS[$i]}"
+    done
+  done
+  echo "  - service: http_status:404"
+} | sudo tee "$CONFIG" >/dev/null
+sudo cat "$CONFIG"
 sudo cloudflared tunnel --config "$CONFIG" ingress validate
 
-step "5/6 設定 DNS：$HOSTNAME_ → tunnel"
+step "5/6 設定 DNS"
 # --overwrite-dns：若已有同名記錄（例如舊的 A 記錄或舊 tunnel），改指向這個 tunnel
-cloudflared tunnel route dns --overwrite-dns "$TUNNEL_ID" "$HOSTNAME_"
+for host in "${UNIQUE_HOSTS[@]}"; do
+  cloudflared tunnel route dns --overwrite-dns "$TUNNEL_ID" "$host"
+done
 
 step "6/6 安裝並啟動 systemd 服務"
 if systemctl list-unit-files cloudflared.service --no-legend 2>/dev/null | grep -q cloudflared; then
@@ -99,19 +150,32 @@ else
   exit 1
 fi
 
-step "驗證 https://$HOSTNAME_/health"
-for i in $(seq 1 12); do
-  if out=$(curl -fsS --max-time 5 "https://$HOSTNAME_/health" 2>/dev/null); then
-    echo "$out"
-    echo
-    echo "完成：https://$HOSTNAME_ 已對外提供服務。"
-    exit 0
+failed=0
+URLS=()
+for i in "${!HOSTS[@]}"; do
+  url="https://${HOSTS[$i]}${PATHS[$i]}"
+  URLS+=("$url")
+  step "驗證 $url/health"
+  ok=0
+  for n in $(seq 1 12); do
+    if out=$(curl -fsS --max-time 5 "$url/health" 2>/dev/null); then
+      echo "$out"
+      ok=1
+      break
+    fi
+    echo "等待 DNS 與 tunnel 生效…（$n/12）"
+    sleep 5
+  done
+  if [[ $ok -eq 0 ]]; then
+    failed=1
+    echo "$url 1 分鐘內還連不上。DNS 可能需要多幾分鐘；排查：" >&2
+    echo "  curl -s ${ORIGINS[$i]}${PATHS[$i]}/health   # 確認本機服務正常且認得前綴（服務還沒部署的話先等 CD）" >&2
+    echo "  sudo journalctl -u cloudflared -n 50 --no-pager" >&2
+    echo "  cloudflared tunnel info $TUNNEL_NAME" >&2
   fi
-  echo "等待 DNS 與 tunnel 生效…（$i/12）"
-  sleep 5
 done
-echo "1 分鐘內還連不上。DNS 可能需要多幾分鐘；可用下列指令排查：" >&2
-echo "  sudo journalctl -u cloudflared -n 50 --no-pager" >&2
-echo "  cloudflared tunnel info $TUNNEL_NAME" >&2
-echo "  curl -s http://127.0.0.1:3000/health   # 確認本機 API 正常" >&2
-exit 1
+if [[ $failed -eq 0 ]]; then
+  echo
+  echo "完成：${URLS[*]} 都已對外提供服務。"
+fi
+exit $failed
