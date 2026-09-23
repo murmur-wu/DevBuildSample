@@ -1,0 +1,33 @@
+# 部署用 compose：image 由 CI 推到 GHCR，VM 上只做 pull + up。
+# 本地測試請用 scripts/local-up.sh（會疊加 docker-compose.local.yml 改成本地 build）。
+services:
+  api:
+    image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git
+    environment:
+      DB_HOST: db
+    ports: ["127.0.0.1:3000:3000"]          # 只綁 localhost，對外交給 tunnel
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-/srv/myapp/.env}   # 需含 POSTGRES_PASSWORD
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
