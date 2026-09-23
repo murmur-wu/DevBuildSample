@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # 第 5 步：安裝 cloudflared，建立 Cloudflare Tunnel，把 https://<HOSTNAME> 轉到本機 127.0.0.1:3000。
 # 在部署主機（buildserver）上，以有 sudo 權限的一般使用者執行（不要用 sudo 執行整支腳本）：
-#   ./scripts/vm/setup-tunnel.sh [HOSTNAME] [TUNNEL_NAME]
-# 預設：HOSTNAME=api-staging.pic-ai.work、TUNNEL_NAME=myapp-staging
+#   ./scripts/vm/setup-tunnel.sh <HOSTNAME> [TUNNEL_NAME]
+#   例：./scripts/vm/setup-tunnel.sh api-staging.heitang.info
+# HOSTNAME 必填，其網域必須已在你的 Cloudflare 帳號中；子網域（如 api-staging）不用先建，腳本會自動建立 CNAME。
+# TUNNEL_NAME 預設 myapp-staging。
 # 可重複執行：已完成的步驟會略過，config 會以目前參數重寫並重啟服務。
 set -euo pipefail
 
-HOSTNAME_="${1:-api-staging.pic-ai.work}"
+if [[ $# -lt 1 || "$1" != *.* ]]; then
+  echo "用法：$0 <HOSTNAME> [TUNNEL_NAME]   例：$0 api-staging.heitang.info" >&2
+  exit 1
+fi
+HOSTNAME_="$1"
+ZONE="$(awk -F. '{print $(NF-1)"."$NF}' <<<"$HOSTNAME_")"
 TUNNEL_NAME="${2:-myapp-staging}"
 ORIGIN="${ORIGIN:-http://127.0.0.1:3000}"
 ETC_DIR=/etc/cloudflared
@@ -34,7 +41,7 @@ step "2/6 登入 Cloudflare"
 if [[ -f "$HOME/.cloudflared/cert.pem" ]]; then
   echo "已登入（$HOME/.cloudflared/cert.pem）"
 else
-  echo "接下來會印出一個網址：用瀏覽器打開、登入 Cloudflare，並選擇 ${HOSTNAME_#*.} 這個網域授權。"
+  echo "接下來會印出一個網址：用瀏覽器打開、登入 Cloudflare，並選擇 $ZONE 這個網域授權。"
   cloudflared tunnel login
 fi
 

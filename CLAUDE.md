@@ -42,7 +42,7 @@ API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（G
 - runner：`cd-vm`，label `staging`，跑在主機 `buildserver` 上，以 `deploy` 使用者執行（systemd 服務 `actions.runner.murmur-wu-DevBuildSample.cd-vm`）。
 - compose project 名稱：`myapp`（本地測試用 `myapp-local`）。
 - 機敏設定：VM 上的 `/srv/myapp/.env`（owner `deploy`、`chmod 600`），**永不進 git**。必須包含 `POSTGRES_PASSWORD`。
-- 服務只綁 `127.0.0.1:3000`，對外走 Cloudflare Tunnel：`https://api-staging.pic-ai.work` → tunnel `myapp-staging` → `127.0.0.1:3000`。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
+- 服務只綁 `127.0.0.1:3000`，對外走 Cloudflare Tunnel：`https://api-staging.heitang.info` → tunnel `myapp-staging` → `127.0.0.1:3000`。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
 - 容器 log 上限在 `deploy/docker-compose.yml` 的 `x-logging`；新增服務時要加上 `logging: *logging`。
 - image tag 使用 git SHA；回滾：Actions → CD → Run workflow，`image_tag` 填舊 SHA（會跳過 build）。
 - CD 部署後依序跑 `/health` 驗證與 smoke test；`/health` 回傳的 `version` 應等於部署的 commit SHA。

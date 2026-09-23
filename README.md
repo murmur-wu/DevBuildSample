@@ -38,7 +38,7 @@ git clone https://github.com/murmur-wu/DevBuildSample.git && cd DevBuildSample
 
 # 3. 跑 smoke test（19 項檢查，全過會 exit 0）
 ./scripts/smoke-test.sh                      # 預設打 http://127.0.0.1:3000
-./scripts/smoke-test.sh https://api-staging.pic-ai.work   # 也可以打其他環境
+./scripts/smoke-test.sh https://api-staging.heitang.info  # 也可以打其他環境
 
 # 4. 其他
 docker compose -p myapp-local -f deploy/docker-compose.yml logs -f api   # 看 log
@@ -89,11 +89,11 @@ curl -s -X DELETE localhost:3000/items/1 -i
 在部署主機上以**一般使用者**執行（不要整支用 sudo，腳本需要時會自己 sudo）：
 
 ```bash
-./scripts/vm/setup-tunnel.sh                          # 預設 api-staging.pic-ai.work、tunnel 名稱 myapp-staging
-./scripts/vm/setup-tunnel.sh <hostname> <tunnel名稱>  # 自訂
+./scripts/vm/setup-tunnel.sh api-staging.heitang.info              # tunnel 名稱預設 myapp-staging
+./scripts/vm/setup-tunnel.sh <hostname> <tunnel名稱>                 # 自訂
 ```
 
-前提：`pic-ai.work` 已在你的 Cloudflare 帳號中。腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
+前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域 `api-staging` 不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
 
 確認 tunnel 正常後再開防火牆：
 
