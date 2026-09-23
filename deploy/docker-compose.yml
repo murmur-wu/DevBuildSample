@@ -1,9 +1,18 @@
 # 部署用 compose：image 由 CI 推到 GHCR，VM 上只做 pull + up。
 # 本地測試請用 scripts/local-up.sh（會疊加 docker-compose.local.yml 改成本地 build）。
+
+# 容器 log 上限：每個服務最多 3 個 10MB 檔，避免 log 把磁碟吃滿
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api}:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    logging: *logging
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git
     environment:
       DB_HOST: db
@@ -21,6 +30,7 @@ services:
   db:
     image: postgres:17
     restart: unless-stopped
+    logging: *logging
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 需含 POSTGRES_PASSWORD
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:

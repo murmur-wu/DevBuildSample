@@ -29,5 +29,5 @@ Actions → CD → Run workflow，`image_tag` 填舊 SHA。build job 會被跳�
 1. 安裝 Docker Engine（見 README）。
 2. `useradd -m -s /bin/bash deploy && usermod -aG docker deploy`；`mkdir -p /srv/myapp && chown deploy:deploy /srv/myapp`；建立 `/srv/myapp/.env`。
 3. 以 `deploy` 身分安裝 runner：`./config.sh --url https://github.com/murmur-wu/DevBuildSample --token <TOKEN> --name cd-vm --labels staging --unattended`，再 `sudo ./svc.sh install deploy && sudo ./svc.sh start`。
-4. cloudflared：`tunnel login / create myapp-staging / route dns ...`。注意 `sudo cloudflared service install` 以 root 執行，`/etc/cloudflared/config.yml` 的 `credentials-file` 要指向實際產生 JSON 的路徑（在哪個使用者下 `tunnel create` 就在其 `~/.cloudflared/`）。
-5. 維運：每週 `docker system prune -af --filter until=168h`、2G swap、`unattended-upgrades`。
+4. cloudflared：`./scripts/vm/setup-tunnel.sh`（一般使用者執行）。確認 `https://api-staging.pic-ai.work/health` 正常後，`sudo ./scripts/vm/setup-firewall.sh`（預設保留 SSH）。
+5. 維運：`sudo ./scripts/vm/setup-maintenance.sh`（每週 Docker 清理、swap、unattended-upgrades）；容器 log 上限在 compose 內。
