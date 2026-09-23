@@ -55,6 +55,8 @@ jobs:
           docker compose -p myapp -f deploy/docker-compose.yml up -d --wait
       - name: Verify
         run: curl -fsS http://127.0.0.1:3000/health
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3000
       - name: Logout GHCR
         if: always()
         run: docker logout ghcr.io
