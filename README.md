@@ -10,13 +10,16 @@
 | 對外網址 | `https://api-staging.heitang.info/node/...` | `https://api-staging.heitang.info/dotnet/...` |
 | CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml`（含 `dotnet test`）/ `cd-dotnet.yml` |
 
-兩者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，反之亦然。
+兩者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。
+
+前端（`apps/web/`）是部署在 Cloudflare Workers 的待辦清單頁面，可切換 Node / .NET 後端；瀏覽器只呼叫同網域的 `/api/...`，由 Worker 代轉到後端（見「前端」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，反之亦然。
 
 部署採 pull-based CD：GitHub Actions 雲端 build → GHCR → VM 上的 self-hosted runner `docker compose pull && up -d`。架構決策見 [docs/adr/0001-pull-based-deploy.md](docs/adr/0001-pull-based-deploy.md)。
 
 ```
 apps/api/                              Node 版原始碼 + Dockerfile
 apps/api-dotnet/                       .NET 版：src/Api（API）、tests/Api.Tests（xUnit）、Dockerfile
+apps/web/                              前端：public/（靜態頁面）、src/worker.js（API 代轉）、wrangler.jsonc
 deploy/docker-compose.yml              Node 版部署用（compose project：myapp）
 deploy/docker-compose.dotnet.yml       .NET 版部署用（compose project：myapp-dotnet）
 deploy/docker-compose*.local.yml       本地測試 override（改成原始碼 build）
@@ -29,6 +32,8 @@ scripts/vm/                            部署主機的一次性設定（tunnel�
 .github/workflows/cd-node.yml          Node：build → GHCR → 部署
 .github/workflows/cd-dotnet.yml        .NET：build → GHCR → 部署
 .github/workflows/_build-deploy.yml    兩個 CD 共用的 build + deploy 流程
+.github/workflows/ci-web.yml           前端：wrangler dev + 經代轉跑兩個後端的 smoke test
+.github/workflows/cd-web.yml           前端：部署到 Cloudflare Workers，再對正式網址跑 smoke test
 ```
 
 ## 在本地 Ubuntu 測試後端
@@ -161,3 +166,45 @@ sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數�
 - 沒有 swap 時建立 `/swapfile`
 - 啟用 unattended-upgrades 自動安裝安全更新（不會自動重開機）
 - 容器 log 上限（每服務 3 × 10MB）寫在兩個 compose 檔，隨 CD 部署生效
+
+## 前端（Cloudflare Workers）
+
+```
+瀏覽器 ──► https://devbuildsample-web.<你的子網域>.workers.dev
+             ├─ /、/app.js、/style.css      → 靜態檔案（apps/web/public）
+             ├─ /api/node/*                 → Worker 代轉 → https://api-staging.heitang.info/node/*
+             └─ /api/dotnet/*               → Worker 代轉 → https://api-staging.heitang.info/dotnet/*
+```
+
+瀏覽器只跟同一個網域溝通，所以沒有跨網域（CORS）問題，後端也不用改。後端的 `Location` header（例如 `/node/items/1`）會被改寫成 `/api/node/items/1`。代轉目標設定在 `apps/web/wrangler.jsonc` 的 `vars`（`NODE_API`、`DOTNET_API`）。
+
+### 本機開發
+
+```bash
+./scripts/local-up.sh node && ./scripts/local-up.sh dotnet    # 先啟動兩個後端
+cd apps/web
+npm install
+cp .dev.vars.example .dev.vars    # 讓 Worker 代轉到本機後端
+npm run dev                        # http://127.0.0.1:8787
+../../scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet   # 經代轉跑 smoke test
+```
+
+### 第一次部署前的設定（只做一次）
+
+1. **Cloudflare API token**：Cloudflare dashboard → 右上角帳號 → **Account API tokens** → **Create Token** → 範本 **Edit Cloudflare Workers** → 帳號選你自己的帳號 → 建立並複製 token。
+2. **Account ID**：dashboard 首頁 → **Workers & Pages**，右側可以看到 **Account ID**。
+3. **workers.dev 子網域**：第一次使用 Workers 時，在 **Workers & Pages** 頁面會要求設定一個子網域（例如 `murmur`），網址會是 `devbuildsample-web.murmur.workers.dev`。
+4. **GitHub secrets**：repo → **Settings** → **Secrets and variables** → **Actions** → 新增 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`。
+
+之後只要改 `apps/web/` 並合併到 `main`，CD (Web) 就會自動部署，並對正式網址跑兩個後端的 smoke test。部署網址會顯示在 Actions 該次執行的 Summary。
+
+### 綁自訂網域（選用）
+
+在 `apps/web/wrangler.jsonc` 加上：
+
+```jsonc
+"routes": [{ "pattern": "app-staging.heitang.info", "custom_domain": true }]
+```
+
+合併後 CD 會自動建立 DNS 與憑證。子網域一樣只能一層。
+

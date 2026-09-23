@@ -18,6 +18,8 @@
 | 對外網址（PATH_BASE） | `https://api-staging.heitang.info/node/...`（`/node`） | `https://api-staging.heitang.info/dotnet/...`（`/dotnet`） |
 | CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml` / `cd-dotnet.yml` |
 
+前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/node/*`、`/api/dotnet/*` 由 `src/worker.js` 代轉到 `NODE_API`、`DOTNET_API`（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI/CD：`ci-web.yml` / `cd-web.yml`。
+
 **兩版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，另一版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒、.NET 微秒）、`GET /` 的 `name`（`api` / `api-dotnet`）。
 
 ```
@@ -42,7 +44,12 @@ scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安�
 .github/workflows/cd-node.yml             Node：呼叫 _build-deploy.yml
 .github/workflows/cd-dotnet.yml           .NET：呼叫 _build-deploy.yml
 .github/workflows/_build-deploy.yml       共用：雲端 build → GHCR → self-hosted runner 部署 → /health → smoke test
+.github/workflows/ci-web.yml              前端：wrangler dev 代轉到本機兩個後端，跑 smoke test
+.github/workflows/cd-web.yml              前端：wrangler deploy → 對部署網址跑 smoke test（需 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID secrets）
 .github/actionlint.yaml                   宣告自訂 runner label（staging），供 actionlint 檢查
+apps/web/public/                          前端靜態頁面（純 HTML/CSS/JS，無 build 步驟）
+apps/web/src/worker.js                    API 代轉，改寫 Location header
+apps/web/wrangler.jsonc                   Worker 設定：run_worker_first ["/api/*"]、vars
 ```
 
 API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（GET 列表、POST、GET/PUT/DELETE `/items/:id`）。`items` 資料表在啟動時以 `CREATE TABLE IF NOT EXISTS` 建立，DB 未就緒會重試。
@@ -57,6 +64,8 @@ API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（G
 ./scripts/local-up.sh [node|dotnet] logs    # 容器 log
 docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 dotnet test   # .NET 單元測試
 actionlint                                  # 改 workflow 後檢查（設定在 .github/actionlint.yaml）
+cd apps/web && cp .dev.vars.example .dev.vars && npm run dev   # 前端本機開發（先啟動兩個後端），http://127.0.0.1:8787
+./scripts/smoke-test.sh http://127.0.0.1:8787/api/node          # 經 Worker 代轉跑 smoke test
 ```
 
 修改 API 後，送出前至少對改到的那一版跑一次 `local-up.sh` + `smoke-test.sh`（.NET 版另跑 `dotnet test`）。新增 endpoint 時兩版都要實作，同步在 `smoke-test.sh` 補上檢查，並更新 README 的 API 表格。
@@ -89,6 +98,9 @@ actionlint                                  # 改 workflow 後檢查（設定在
 - **不要用 `POSTGRES_PASSWORD_FILE`** 而不定義 compose secrets，postgres 會無法啟動；目前從 `env_file` 讀 `POSTGRES_PASSWORD`。
 - **cloudflared 的憑證位置**：`tunnel login/create` 以一般使用者執行，憑證在該使用者的 `~/.cloudflared/`；以 root 跑的服務讀不到，所以 `setup-tunnel.sh` 會複製到 `/etc/cloudflared/`，並用 `sudo cloudflared --config /etc/cloudflared/config.yml service install`。
 - **ufw 會鎖掉 SSH**：`ufw default deny incoming` 前必須先 `ufw allow OpenSSH`；`setup-firewall.sh` 預設會保留。
+- **Cloudflare 新專案用 Workers，不用 Pages**：官方文件建議新專案改用 Workers Static Assets，Pages 只維護不加新功能。
+- **前端不直接呼叫 api-staging**：跨網域會被 CORS 擋，後端也沒有處理 `OPTIONS` 預檢。一律經 Worker 的 `/api/<backend>/` 代轉；新增後端時在 `worker.js` 的 `BACKENDS` 與 `wrangler.jsonc` 的 `vars` 各加一筆。
+- **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
 - GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 
 ## Git 與 PR 慣例
