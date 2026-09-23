@@ -17,6 +17,9 @@ deploy/docker-compose.local.yml 本地 override：改為原始碼 build
 deploy/.env.example             機敏設定範本
 scripts/local-up.sh             本地一鍵啟動（up / down / clean）
 scripts/smoke-test.sh           端到端測試（19 項）
+scripts/vm/setup-tunnel.sh      部署主機：Cloudflare Tunnel（一般使用者執行）
+scripts/vm/setup-firewall.sh    部署主機：ufw，預設保留 SSH（sudo 執行）
+scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安全更新（sudo 執行）
 .github/workflows/ci.yml        PR 與 push main：起服務 + smoke test
 .github/workflows/cd.yml        push main：雲端 build → GHCR → self-hosted runner 部署
 ```
@@ -39,7 +42,8 @@ API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（G
 - runner：`cd-vm`，label `staging`，跑在主機 `buildserver` 上，以 `deploy` 使用者執行（systemd 服務 `actions.runner.murmur-wu-DevBuildSample.cd-vm`）。
 - compose project 名稱：`myapp`（本地測試用 `myapp-local`）。
 - 機敏設定：VM 上的 `/srv/myapp/.env`（owner `deploy`、`chmod 600`），**永不進 git**。必須包含 `POSTGRES_PASSWORD`。
-- 服務只綁 `127.0.0.1:3000`，對外預計走 Cloudflare Tunnel（`api-staging.pic-ai.work`，尚未設定）。
+- 服務只綁 `127.0.0.1:3000`，對外走 Cloudflare Tunnel：`https://api-staging.heitang.info` → tunnel `myapp-staging` → `127.0.0.1:3000`。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
+- 容器 log 上限在 `deploy/docker-compose.yml` 的 `x-logging`；新增服務時要加上 `logging: *logging`。
 - image tag 使用 git SHA；回滾：Actions → CD → Run workflow，`image_tag` 填舊 SHA（會跳過 build）。
 - CD 部署後依序跑 `/health` 驗證與 smoke test；`/health` 回傳的 `version` 應等於部署的 commit SHA。
 
@@ -50,6 +54,8 @@ API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（G
 - **port 3000 衝突**：同一台機器上 `local-up.sh` 與 CD 部署都綁 `127.0.0.1:3000`，部署前要先 `./scripts/local-up.sh down`。
 - **`docker compose up --wait` 需要 healthcheck**：api 與 db 都已定義，新增服務時也要加。
 - **不要用 `POSTGRES_PASSWORD_FILE`** 而不定義 compose secrets，postgres 會無法啟動；目前從 `env_file` 讀 `POSTGRES_PASSWORD`。
+- **cloudflared 的憑證位置**：`tunnel login/create` 以一般使用者執行，憑證在該使用者的 `~/.cloudflared/`；以 root 跑的服務讀不到，所以 `setup-tunnel.sh` 會複製到 `/etc/cloudflared/`，並用 `sudo cloudflared --config /etc/cloudflared/config.yml service install`。
+- **ufw 會鎖掉 SSH**：`ufw default deny incoming` 前必須先 `ufw allow OpenSSH`；`setup-firewall.sh` 預設會保留。
 - GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 
 ## Git 與 PR 慣例

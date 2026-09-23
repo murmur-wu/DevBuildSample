@@ -9,6 +9,7 @@ deploy/docker-compose.local.yml  本地測試 override（改成原始碼 build�
 deploy/.env.example           機敏設定範本（真正的 .env 永不進 git）
 scripts/local-up.sh           本地一鍵啟動 + 驗證
 scripts/smoke-test.sh         端到端測試（health + /items CRUD + 錯誤處理）
+scripts/vm/                   部署主機的一次性設定（tunnel、防火牆、維運）
 .github/workflows/ci.yml      PR / push main 時跑 smoke test
 .github/workflows/cd.yml      CD pipeline（部署後也跑 smoke test）
 ```
@@ -37,7 +38,7 @@ git clone https://github.com/murmur-wu/DevBuildSample.git && cd DevBuildSample
 
 # 3. 跑 smoke test（19 項檢查，全過會 exit 0）
 ./scripts/smoke-test.sh                      # 預設打 http://127.0.0.1:3000
-./scripts/smoke-test.sh https://api-staging.pic-ai.work   # 也可以打其他環境
+./scripts/smoke-test.sh https://api-staging.heitang.info  # 也可以打其他環境
 
 # 4. 其他
 docker compose -p myapp-local -f deploy/docker-compose.yml logs -f api   # 看 log
@@ -82,3 +83,33 @@ curl -s -X DELETE localhost:3000/items/1 -i
   CD 的「Check env file」步驟會在部署前檢查這個檔案，缺少時直接失敗並提示。
 - self-hosted runner 註冊時帶 `--labels staging`。
 - 回滾：Actions → CD → Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。
+
+## 對外服務：Cloudflare Tunnel
+
+在部署主機上以**一般使用者**執行（不要整支用 sudo，腳本需要時會自己 sudo）：
+
+```bash
+./scripts/vm/setup-tunnel.sh api-staging.heitang.info              # tunnel 名稱預設 myapp-staging
+./scripts/vm/setup-tunnel.sh <hostname> <tunnel名稱>                 # 自訂
+```
+
+前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域 `api-staging` 不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
+
+確認 tunnel 正常後再開防火牆：
+
+```bash
+sudo ./scripts/vm/setup-firewall.sh            # 拒絕所有進入連線，但保留 SSH（建議）
+```
+
+runner 與 cloudflared 都只用對外連線，不受影響。`--no-ssh` 會連 SSH 都關掉，只有在確定有其他方式登入主機時才用（腳本偵測到有 SSH 連線會拒絕執行）。
+
+## 維運
+
+```bash
+sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數如 4G
+```
+
+- 每週清理 7 天前未使用的 Docker image / container / build cache（不動 volume，DB 資料安全）；紀錄：`journalctl -t docker-prune`
+- 沒有 swap 時建立 `/swapfile`
+- 啟用 unattended-upgrades 自動安裝安全更新（不會自動重開機）
+- 容器 log 上限（每服務 3 × 10MB）寫在 `deploy/docker-compose.yml`，隨 CD 部署生效
