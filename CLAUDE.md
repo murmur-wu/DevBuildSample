@@ -80,6 +80,8 @@ actionlint                                  # 改 workflow 後檢查（設定在
 - **.NET 容器內 port 是 8080**：.NET 8 起 aspnet image 預設 8080（Dockerfile 明確設 `ASPNETCORE_HTTP_PORTS=8080`），compose 對應成主機 3001。healthcheck 打的是容器內 8080。
 - **.NET runtime image 要用 alpine 版**：標準 `aspnet:10.0` 沒有 curl/wget，healthcheck 會失敗；`aspnet:10.0-alpine` 有 busybox wget。
 - **setup-tunnel.sh 每次都要列出全部 hostname**：config 依參數整份重寫，只列一個會把另一個的路由刪掉。
+- **更新 tunnel 前先在 buildserver 上 `git checkout main && git pull`**：腳本是在主機上的 clone 執行，不會隨 CD 更新。曾在 PR 合併前用舊版腳本跑新參數（`HOSTNAME/PATH=ORIGIN`），config 沒改成功，`/dotnet/...` 仍被送到 Node 而回 404。確認方式：`sudo cat /etc/cloudflared/config.yml` 要看得到每條 `path:` 規則。
+- **改路由時，先部署程式、再更新 tunnel**：順序反過來的話，tunnel 已把新路徑導向還沒部署（或還不認得前綴）的服務，對外會暫時 404/502。
 - **cloudflared 轉送時不會去掉路徑前綴**：兩版都靠環境變數 `PATH_BASE`（compose 設定）去掉 `/node`、`/dotnet`。沒帶前綴的請求也要照常處理（本機、healthcheck、CD 的 Verify 都不帶前綴）。`Location` header 要帶回前綴，smoke test 會檢查。
 - **.NET 的 `UsePathBase` 後面必須明確呼叫 `UseRouting()`**：Minimal API 預設在最前面自動加 routing，否則比對到的是還帶前綴的路徑，全部 404。
 - **Cloudflare 子網域只能一層**：若改用子網域分流，`a.heitang.info` 可以，`api.dotnet.heitang.info` 不在免費 Universal SSL 憑證範圍內。
