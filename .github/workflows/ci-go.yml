@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: gofmt、go vet、go test（在 golang 官方容器中執行，與本機相同）
         run: |
           docker run --rm -v "$PWD/apps/api-go:/src" -w /src golang:1.27-alpine \
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build and start api + db
         run: ./scripts/local-up.sh go
       - name: Smoke test

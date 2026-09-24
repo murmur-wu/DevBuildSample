@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: dotnet test（在 .NET 10 SDK 容器中執行，與本機相同）
         run: |
           docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src \
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build and start api + db
         run: ./scripts/local-up.sh dotnet
       - name: Smoke test
