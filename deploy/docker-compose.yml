@@ -1,4 +1,4 @@
-# Node 版部署用 compose（compose project：myapp）：image 由 CI 推到 GHCR，VM 上只做 pull + up。
+# Node 版部署用 compose（compose project：myapp）：image 由 CI 推到 Docker Hub，VM 上只做 pull + up。
 # 本地測試請用 scripts/local-up.sh（會疊加 docker-compose.local.yml 改成本地 build）。
 
 # 容器 log 上限：每個服務最多 3 個 10MB 檔，避免 log 把磁碟吃滿
@@ -10,7 +10,8 @@ x-logging: &logging
 
 services:
   api:
-    image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api}:${IMAGE_TAG:-latest}
+    # Docker Hub 的 private repo，六個後端共用、以 tag 前綴區分；CD 會設定 IMAGE_TAG=node-<commit SHA>
+    image: ${IMAGE_REPO:-docker.io/murmur20260202/devbuildsample}:${IMAGE_TAG:-node-latest}
     restart: unless-stopped
     logging: *logging
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 機敏設定留在 VM 上，永不進 git

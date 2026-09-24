@@ -7,7 +7,7 @@
 
 ## 專案概觀
 
-最小範例後端，同一套 API 有六種實作，各自獨立測試、獨立部署，搭配 pull-based CD。架構決策見 `docs/adr/`（0001 部署方式、0002/0004/0005/0006 各版後端）。
+最小範例後端，同一套 API 有六種實作，各自獨立測試、獨立部署，搭配 pull-based CD。架構決策見 `docs/adr/`（0001 部署方式、0002/0004/0005/0006 各版後端、0003 前端、0007 改用 Docker Hub）。
 
 | 版本（key） | 原始碼 | compose 檔 / project | 本機 port（容器內） | PATH_BASE | CI / CD |
 |---|---|---|---|---|---|
@@ -18,7 +18,7 @@
 | Go（`go`） | `apps/api-go/`（Go 1.27，標準函式庫 net/http + pgx） | `docker-compose.go.yml` / `myapp-go` | 3004（8080） | `/go` | `ci-go.yml` / `cd-go.yml` |
 | Java（`java`） | `apps/api-java/`（Java 25 + Spring Boot 4 + JdbcTemplate） | `docker-compose.java.yml` / `myapp-java` | 3005（8080） | `/java` | `ci-java.yml` / `cd-java.yml` |
 
-GHCR image 為 `ghcr.io/murmur-wu/devbuildsample/api`（Node）或 `.../api-<key>`（其他版）；對外網址為 `https://api-staging.heitang.info<PATH_BASE>/...`。前端 Worker 的後端代號與 PATH_BASE 相同（去掉斜線，例如 `py`、`go`），環境變數為 `NODE_API`、`DOTNET_API`、`PHP_API`、`PY_API`、`GO_API`、`JAVA_API`。
+image 放在 Docker Hub 的 private repo `docker.io/murmur20260202/devbuildsample`，六版共用、以 tag 區分：`<key>-<commit SHA>`（另有 `<key>-latest`）；對外網址為 `https://api-staging.heitang.info<PATH_BASE>/...`。前端 Worker 的後端代號與 PATH_BASE 相同（去掉斜線，例如 `py`、`go`），環境變數為 `NODE_API`、`DOTNET_API`、`PHP_API`、`PY_API`、`GO_API`、`JAVA_API`。
 
 前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/<代號>/*` 由 `src/worker.js` 代轉到對應的後端（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI：`ci-web.yml`（GitHub Actions）；CD：Cloudflare **Workers Builds**（Git 整合，root directory `apps/web`、watch paths `apps/web/*`，設定在 Cloudflare dashboard，不在 repo 裡）。
 
@@ -63,7 +63,7 @@ scripts/vm/setup-firewall.sh    部署主機：ufw，預設保留 SSH（sudo 執
 scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安全更新（sudo 執行）
 .github/workflows/ci-<key>.yml            各版 CI：單元測試（Node 版沒有）+ smoke test（有/無前綴）+ 請求紀錄格式檢查
 .github/workflows/cd-<key>.yml            各版 CD：呼叫 _build-deploy.yml
-.github/workflows/_build-deploy.yml       共用：雲端 build → GHCR → self-hosted runner 部署 → /health → smoke test
+.github/workflows/_build-deploy.yml       共用：雲端 build → Docker Hub → self-hosted runner 部署 → /health → smoke test
 .github/workflows/ci-web.yml              前端：wrangler dev 代轉到本機六個後端，跑 smoke test
 .github/actionlint.yaml                   宣告自訂 runner label（staging），供 actionlint 檢查
 .github/dependabot.yml                    每週檢查基底 image（Dockerfile、compose）、pip / Go 模組 / Maven 套件與 GitHub Actions 更新，開 PR；不提議主版本升級
@@ -108,13 +108,16 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - 機敏設定：VM 上的 `/srv/myapp/.env`（owner `deploy`、`chmod 600`），**永不進 git**。必須包含 `POSTGRES_PASSWORD`。
 - 服務只綁 127.0.0.1，對外走 Cloudflare Tunnel `myapp-staging`，同一個網址用路徑分流：`https://api-staging.heitang.info/node/...` → `127.0.0.1:3000`、`/dotnet/...` → `127.0.0.1:3001`、`/php/...` → `127.0.0.1:3002`、`/py/...` → `127.0.0.1:3003`、`/go/...` → `127.0.0.1:3004`、`/java/...` → `127.0.0.1:3005`，其他路徑 404。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
 - 容器 log 上限在各 compose 檔的 `x-logging`；新增服務時要加上 `logging: *logging`。
-- image tag 使用 git SHA；回滾：Actions → 該版的 CD（例如 CD (Go)）→ Run workflow，`image_tag` 填舊 SHA（會跳過 build）。
+- image tag 為 `<key>-<git SHA>`；回滾：Actions → 該版的 CD（例如 CD (Go)）→ Run workflow，`image_tag` 填舊 SHA（會跳過 build）。只能回滾到改用 Docker Hub 之後的 commit，之前的 image 在 GHCR。
+- CD 需要 repo secrets `DOCKERHUB_USERNAME`（`murmur20260202`）與 `DOCKERHUB_TOKEN`（Docker Hub 的 Read & Write access token），各 `cd-<key>.yml` 以 `secrets: inherit` 傳給 `_build-deploy.yml`。token 到期或外洩時：Docker Hub → Account settings → Personal access tokens 重新產生，再更新 GitHub secret。
 - CD 部署後依序跑 `/health` 驗證與 smoke test；`/health` 回傳的 `version` 應等於部署的 commit SHA。
 - CD 的時間上限：`Pull images` 20 分鐘、`Deploy`（`up --wait --wait-timeout 180`）5 分鐘、整個 deploy job 30 分鐘。正常部署約 20–30 秒。
 
 ## 已踩過的坑
 
-- **GHCR 路徑必須全小寫**：repo 名稱是 `DevBuildSample`，workflow 以 `${GITHUB_REPOSITORY,,}` 轉成 `ghcr.io/murmur-wu/devbuildsample/api`。不要直接用 `${{ github.repository }}` 當 image 名稱。
+- **不用 GHCR，改用 Docker Hub**：buildserver 從 GHCR 下載只有約 35–70KB/s（大一點的層還會卡住），Docker Hub 約 6MB/s 以上；主機沒有 IPv6、MTU 1500 正常，換 DNS 也無效（GHCR 用 anycast，每個 DNS 給的 IP 都一樣），是網路業者到 GitHub CDN 的線路問題。Java 第一次部署曾花 15 分鐘下載。見 ADR 0007。
+- **Docker Hub 免費方案只有 1 個 private repo**：六個後端共用 `devbuildsample`，以 tag 前綴（`<key>-`）區分；新增後端時沿用同一個 repo，不要另開。repo 名稱必須全小寫。
+- **reusable workflow 拿不到呼叫端的 secrets**：`cd-<key>.yml` 呼叫 `_build-deploy.yml` 時要寫 `secrets: inherit`，否則 Docker Hub 登入會因 secret 未提供而失敗。
 - **兩個 `.env` 不同**：`deploy/.env` 是 `local-up.sh` 自動產生、本地測試用；CD 讀的是 `/srv/myapp/.env`。CD 曾因後者不存在而失敗（`env file /srv/myapp/.env not found`）。
 - **port 衝突**：同一台機器上 `local-up.sh` 與 CD 部署綁同樣的 port（見上表），部署前要先 `./scripts/local-up.sh <key> down`。
 - **.NET 容器內 port 是 8080**：.NET 8 起 aspnet image 預設 8080（Dockerfile 明確設 `ASPNETCORE_HTTP_PORTS=8080`），compose 對應成主機 3001。healthcheck 打的是容器內 8080。
@@ -135,6 +138,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **請求紀錄格式各版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要各版一起改並更新各 `ci-<key>.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
 - **Swagger UI 的 CDN 版本要連同 SRI 一起更新**：`docs/index.html` 的 `integrity` 雜湊取自 npm 上同版本的 `swagger-ui-dist`（`npm pack` 後 `openssl dgst -sha384 -binary <檔案> | openssl base64 -A`），只改版本不改雜湊，瀏覽器會拒絕載入。
 - **基底 image 一律以 digest 鎖定**（`node:22-alpine@sha256:…`、`aspnet:10.0-alpine@sha256:…`、`frankenphp:1-php8.5-alpine@sha256:…`、`python:3.14-alpine@sha256:…`、`golang`/`alpine`、`maven`/`eclipse-temurin`、`postgres:17@sha256:…`）：曾因 `node:22-alpine` 沒鎖定，官方更新後 buildserver 要重新下載約 55MB 的基底層，加上下載速度只有約 100KB/s，一次部署花了 9 分鐘（.NET 同時只花 12 秒）。更新一律透過 Dependabot 的 PR，合併那次部署會比較久。改 `FROM` 或 compose 的 `image` 時要保留 `@sha256:`。
+- **Java 的編譯 image 不跟 Dependabot 換 JDK**：`maven:3-eclipse-temurin-25-alpine` 的版本號是開頭的 Maven 3，JDK 25 在後綴裡，Dependabot 曾開 PR 把它換成非 LTS 的 JDK 26（PR #12，已關閉）。`dependabot.yml` 對 `maven` 忽略小版本與修訂版更新，只保留 digest 更新；編譯與執行一律用同一個 Java LTS（目前 25），要換時手動改 Dockerfile、`pom.xml` 的 `java.version` 與 `ci-java.yml`。
 - **不要讓 postgres 自動升主版本**：17→18 資料目錄格式不相容，直接換 image 會讓 DB 起不來，需要 `pg_upgrade` 或匯出匯入。`dependabot.yml` 已忽略所有主版本升級。
 - **`docker compose up --wait` 預設沒有上限**：容器一直重啟時會無限等待並擋住後面排隊的部署，所以一律加 `--wait-timeout`。
 - **FrankenPHP 官方 image 沒有 PostgreSQL 驅動**：Dockerfile 以 image 內建的 `install-php-extensions pdo_pgsql` 安裝（build 時要能連到 Alpine 套件庫）。
@@ -156,7 +160,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **Spring Boot 4 用 Jackson 3**：套件是 `tools.jackson.*`（不是 `com.fasterxml.jackson.databind`），`isTextual()`/`asText()` 改名為 `isString()`/`stringValue()`；註解（`@JsonInclude` 等）仍在 `com.fasterxml.jackson.annotation`。
 - **前端的後端按鈕**：超過五個在手機上一行放不下，`style.css` 在 560px 以下改成三欄格狀排列；再加後端時要確認手機寬度（320px）沒有橫向捲動。
 - **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
-- GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
+- GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v7`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 
 ## Git 與 PR 慣例
 

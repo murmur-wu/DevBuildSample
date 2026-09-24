@@ -11,7 +11,8 @@ x-logging: &logging
 
 services:
   api:
-    image: ${IMAGE_REPO:-ghcr.io/murmur-wu/devbuildsample/api-php}:${IMAGE_TAG:-latest}
+    # Docker Hub 的 private repo，六個後端共用、以 tag 前綴區分；CD 會設定 IMAGE_TAG=php-<commit SHA>
+    image: ${IMAGE_REPO:-docker.io/murmur20260202/devbuildsample}:${IMAGE_TAG:-php-latest}
     restart: unless-stopped
     logging: *logging
     env_file: ${ENV_FILE:-/srv/myapp/.env}   # 與 Node、.NET 版共用同一份機敏設定

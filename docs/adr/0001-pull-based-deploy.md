@@ -9,7 +9,7 @@ Staging 後端跑在單台 Ubuntu VM。希望 VM 不對外開任何 port（含 S
 
 ## 決策
 
-1. **Build 在雲端**：`push main` → GitHub-hosted runner build image → 推到 GHCR，tag 為 git SHA（`ghcr.io/murmur-wu/devbuildsample/api:<sha>`；GHCR 路徑必須全小寫，workflow 以 `${GITHUB_REPOSITORY,,}` 轉換）。
+1. **Build 在雲端**：`push main` → GitHub-hosted runner build image → 推到 registry，tag 含 git SHA。原本用 GHCR（`ghcr.io/murmur-wu/devbuildsample/api:<sha>`），後因 buildserver 從 GHCR 下載太慢改為 Docker Hub（`murmur20260202/devbuildsample:<key>-<sha>`），見 ADR 0007。
 2. **Deploy 採 pull-based**：VM 上的 self-hosted runner（label `staging`，以 `deploy` 使用者跑 systemd 服務）只做 outbound 連線領 job，執行 `docker compose pull && up -d --wait`，再 `curl /health` 驗證。失敗即 workflow 紅燈。
 3. **對外走 Cloudflare Tunnel**：api 只綁 `127.0.0.1:3000`，由 `cloudflared` 轉給 `api-staging.heitang.info`。防火牆 `ufw default deny incoming`。
 4. **機敏設定放 VM**：`/srv/myapp/.env`（`chmod 600`），被 compose 的 `env_file` 讀取，永不進 git。範本為 `deploy/.env.example`。

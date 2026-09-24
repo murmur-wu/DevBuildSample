@@ -20,6 +20,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Java 版的編譯 image maven:3-eclipse-temurin-25-alpine：tag 開頭的 3 是 Maven 版本，JDK 版本（25）在後綴裡，
+      # Dependabot 會把 25→26 當成小版本而提議換 JDK（PR #12）。這個 tag 本身就會跟著 Maven 3.x 更新，
+      # 所以一律不換 tag；同一個 tag 的 digest 更新（安全修補）不受影響。JDK 要換 LTS 時手動改。
+      - dependency-name: "maven"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
     groups:
       base-images:
         patterns: ["*"]
