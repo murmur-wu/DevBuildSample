@@ -46,6 +46,7 @@ scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安�
 .github/workflows/_build-deploy.yml       共用：雲端 build → GHCR → self-hosted runner 部署 → /health → smoke test
 .github/workflows/ci-web.yml              前端：wrangler dev 代轉到本機兩個後端，跑 smoke test
 .github/actionlint.yaml                   宣告自訂 runner label（staging），供 actionlint 檢查
+.github/dependabot.yml                    每週檢查基底 image（Dockerfile、compose）與 GitHub Actions 更新，開 PR；不提議主版本升級
 apps/web/public/                          前端靜態頁面（純 HTML/CSS/JS，無 build 步驟）
 apps/web/src/worker.js                    API 代轉，改寫 Location header
 apps/web/wrangler.jsonc                   Worker 設定：run_worker_first ["/api/*"]、vars
@@ -85,6 +86,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - 容器 log 上限在兩個 compose 檔的 `x-logging`；新增服務時要加上 `logging: *logging`。
 - image tag 使用 git SHA；回滾：Actions → CD (Node) 或 CD (.NET) → Run workflow，`image_tag` 填舊 SHA（會跳過 build）。
 - CD 部署後依序跑 `/health` 驗證與 smoke test；`/health` 回傳的 `version` 應等於部署的 commit SHA。
+- CD 的時間上限：`Pull images` 20 分鐘、`Deploy`（`up --wait --wait-timeout 180`）5 分鐘、整個 deploy job 30 分鐘。正常部署約 20–30 秒。
 
 ## 已踩過的坑
 
@@ -108,6 +110,9 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **前端不要再加 GitHub Actions 的部署 workflow**：部署已由 Workers Builds 負責，兩邊都部署會重複。Worker 名稱必須與 `wrangler.jsonc` 的 `name`（`devbuildsample-web`）一致，改名要同時改 dashboard。
 - **請求紀錄格式兩版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要兩版一起改並更新 `ci-node.yml`、`ci-dotnet.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
 - **Swagger UI 的 CDN 版本要連同 SRI 一起更新**：`docs/index.html` 的 `integrity` 雜湊取自 npm 上同版本的 `swagger-ui-dist`（`npm pack` 後 `openssl dgst -sha384 -binary <檔案> | openssl base64 -A`），只改版本不改雜湊，瀏覽器會拒絕載入。
+- **基底 image 一律以 digest 鎖定**（`node:22-alpine@sha256:…`、`aspnet:10.0-alpine@sha256:…`、`postgres:17@sha256:…`）：曾因 `node:22-alpine` 沒鎖定，官方更新後 buildserver 要重新下載約 55MB 的基底層，加上下載速度只有約 100KB/s，一次部署花了 9 分鐘（.NET 同時只花 12 秒）。更新一律透過 Dependabot 的 PR，合併那次部署會比較久。改 `FROM` 或 compose 的 `image` 時要保留 `@sha256:`。
+- **不要讓 postgres 自動升主版本**：17→18 資料目錄格式不相容，直接換 image 會讓 DB 起不來，需要 `pg_upgrade` 或匯出匯入。`dependabot.yml` 已忽略所有主版本升級。
+- **`docker compose up --wait` 預設沒有上限**：容器一直重啟時會無限等待並擋住後面排隊的部署，所以一律加 `--wait-timeout`。
 - **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
 - GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 

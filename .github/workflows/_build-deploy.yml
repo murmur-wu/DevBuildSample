@@ -61,6 +61,8 @@ jobs:
     needs: build
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: [self-hosted, staging]   # ← 指到 buildserver 上的 cd-vm
+    # 整個 job 的上限（pull 20 + 啟動 5 + 其他步驟），避免卡住時擋住後面排隊的部署
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -86,10 +88,15 @@ jobs:
           echo "$ENV_FILE OK"
       - name: Login GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      # 下載與啟動分開設上限：
+      # - pull：基底 image 鎖定 digest 後平常只下載幾 KB，約 10–20 秒；基底更新或網路慢時可能要好幾分鐘，給足 20 分鐘
+      # - up --wait：正常 5–10 秒就 healthy；超過 3 分鐘多半是容器一直重啟，直接失敗並由 Logs on failure 印出 log
+      - name: Pull images
+        timeout-minutes: 20
+        run: $COMPOSE pull
       - name: Deploy
-        run: |
-          $COMPOSE pull
-          $COMPOSE up -d --wait
+        timeout-minutes: 5
+        run: $COMPOSE up -d --wait --wait-timeout 180
       - name: Verify
         run: curl -fsS "$BASE_URL/health"
       - name: Smoke test
