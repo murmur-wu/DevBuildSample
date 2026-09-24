@@ -20,6 +20,7 @@
 apps/api/                              Node 版原始碼 + Dockerfile
 apps/api-dotnet/                       .NET 版：src/Api（API）、tests/Api.Tests（xUnit）、Dockerfile
 apps/web/                              前端：public/（靜態頁面）、src/worker.js（API 代轉）、wrangler.jsonc
+apps/web/public/openapi.yaml           API 規格（OpenAPI 3.1，兩版共同的契約），Swagger UI 在 /docs/
 deploy/docker-compose.yml              Node 版部署用（compose project：myapp）
 deploy/docker-compose.dotnet.yml       .NET 版部署用（compose project：myapp-dotnet）
 deploy/docker-compose*.local.yml       本地測試 override（改成原始碼 build）
@@ -82,6 +83,9 @@ docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src mcr.microsoft.com/dotnet/
 
 ## API
 
+完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，Node 與 .NET 兩版共同的契約）。
+互動式文件（Swagger UI）：前端網址的 `/docs/`，例如 `https://devbuildsample-web.<子網域>.workers.dev/docs/`。上方 **Servers** 可切換 Node / .NET，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
 | GET | `/health` | 檢查 API 與 DB | 200 | 503（DB 連不上） |
@@ -101,6 +105,26 @@ curl -s localhost:3000/items
 curl -s -X PUT localhost:3000/items/1 -H 'content-type: application/json' -d '{"name":"買牛奶","done":true}'
 curl -s -X DELETE localhost:3000/items/1 -i
 ```
+
+## 觀察後端：請求紀錄與資料庫
+
+兩個後端每收到一個請求都會寫一行紀錄，格式相同：`方法 路徑 狀態碼 耗時`（路徑含前綴、不含 query string；成功的 `/health` 不記，避免 healthcheck 洗版）。
+
+```bash
+# 在 buildserver 上即時看請求（在前端操作時會一行一行出現）
+sudo docker logs -f --since 5m myapp-api-1           # Node
+sudo docker logs -f --since 5m myapp-dotnet-api-1    # .NET
+# 例：
+#   POST /node/items 201 5ms
+#   PUT /node/items/3 200 3ms
+#   GET /node/items/abc 404 0ms
+
+# 直接查資料庫，確認資料真的寫進去（-U / -d 對應 /srv/myapp/.env 的 POSTGRES_USER / POSTGRES_DB）
+sudo docker exec myapp-db-1        psql -U postgres -d app -c 'SELECT * FROM items ORDER BY id;'
+sudo docker exec myapp-dotnet-db-1 psql -U postgres -d app -c 'SELECT * FROM items ORDER BY id;'
+```
+
+本機測試時容器名稱是 `myapp-local-*`、`myapp-dotnet-local-*`，或用 `./scripts/local-up.sh [node|dotnet] logs`。
 
 ## 部署到 staging VM
 
@@ -186,7 +210,10 @@ npm install
 cp .dev.vars.example .dev.vars    # 讓 Worker 代轉到本機後端
 npm run dev                        # http://127.0.0.1:8787
 ../../scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet   # 經代轉跑 smoke test
+npm run lint:openapi               # 檢查 OpenAPI 規格
 ```
+
+Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist，固定版本並以 SRI 驗證）。
 
 ### 部署：Cloudflare Workers Builds（Git 整合，只設定一次）
 

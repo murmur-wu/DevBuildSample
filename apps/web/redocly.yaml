@@ -1,0 +1,9 @@
+# OpenAPI 規格檢查（npx @redocly/cli lint）
+extends:
+  - recommended
+rules:
+  # 範例專案沒有驗證機制，也沒有授權條款
+  security-defined: off
+  info-license: off
+  # GET /health、GET /、GET /items 本來就沒有 4xx 回應
+  operation-4xx-response: off

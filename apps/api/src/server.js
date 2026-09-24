@@ -128,8 +128,21 @@ async function handleItems(req, res, id, base) {
   return send(res, 200, result.rows[0]);
 }
 
+// 請求紀錄：每個請求一行「方法 路徑 狀態碼 耗時」，例如 `POST /node/items 201 4ms`（格式與 .NET 版相同）。
+// 路徑不含 query string；成功的 /health 不記（docker healthcheck 每 10 秒打一次，會洗版）。
+function logRequest(req, res, fullPath, path) {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    if (res.statusCode === 200 && path === '/health') return;
+    const ms = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+    console.log(`${req.method} ${fullPath} ${res.statusCode} ${ms}ms`);
+  });
+}
+
 const server = http.createServer(async (req, res) => {
-  const { base, path: pathname } = splitPathBase(new URL(req.url, 'http://localhost').pathname);
+  const fullPath = new URL(req.url, 'http://localhost').pathname;
+  const { base, path: pathname } = splitPathBase(fullPath);
+  logRequest(req, res, fullPath, pathname);
   try {
     if (req.method === 'GET' && pathname === '/health') {
       try {

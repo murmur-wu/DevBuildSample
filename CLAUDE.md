@@ -20,7 +20,7 @@
 
 前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/node/*`、`/api/dotnet/*` 由 `src/worker.js` 代轉到 `NODE_API`、`DOTNET_API`（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI：`ci-web.yml`（GitHub Actions）；CD：Cloudflare **Workers Builds**（Git 整合，root directory `apps/web`、watch paths `apps/web/*`，設定在 Cloudflare dashboard，不在 repo 裡）。
 
-**兩版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，另一版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒、.NET 微秒）、`GET /` 的 `name`（`api` / `api-dotnet`）。
+**兩版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），契約寫在 `apps/web/public/openapi.yaml`（OpenAPI 3.1，Swagger UI 在前端的 `/docs/`），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，另一版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒、.NET 微秒）、`GET /` 的 `name`（`api` / `api-dotnet`）。
 
 ```
 apps/api/src/server.js                    Node 版 API
@@ -49,6 +49,9 @@ scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安�
 apps/web/public/                          前端靜態頁面（純 HTML/CSS/JS，無 build 步驟）
 apps/web/src/worker.js                    API 代轉，改寫 Location header
 apps/web/wrangler.jsonc                   Worker 設定：run_worker_first ["/api/*"]、vars
+apps/web/public/openapi.yaml              API 規格（兩版共同契約）；servers 為 /api/node、/api/dotnet（經 Worker 代轉）
+apps/web/public/docs/                     Swagger UI（jsDelivr 載入 swagger-ui-dist，固定版本 + SRI）
+apps/web/redocly.yaml                     OpenAPI 檢查規則（npm run lint:openapi）
 ```
 
 API：`GET /health`（會查 DB，失敗回 503）、`GET /`、`/items` CRUD（GET 列表、POST、GET/PUT/DELETE `/items/:id`）。`items` 資料表在啟動時以 `CREATE TABLE IF NOT EXISTS` 建立，DB 未就緒會重試。
@@ -65,9 +68,12 @@ docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src mcr.microsoft.com/dotnet/
 actionlint                                  # 改 workflow 後檢查（設定在 .github/actionlint.yaml）
 cd apps/web && cp .dev.vars.example .dev.vars && npm run dev   # 前端本機開發（先啟動兩個後端），http://127.0.0.1:8787
 ./scripts/smoke-test.sh http://127.0.0.1:8787/api/node          # 經 Worker 代轉跑 smoke test
+cd apps/web && npm run lint:openapi                              # 檢查 OpenAPI 規格
+sudo docker logs -f myapp-api-1                                  # staging 上看 Node 的請求紀錄（.NET：myapp-dotnet-api-1）
+sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   # 直接查資料庫
 ```
 
-修改 API 後，送出前至少對改到的那一版跑一次 `local-up.sh` + `smoke-test.sh`（.NET 版另跑 `dotnet test`）。新增 endpoint 時兩版都要實作，同步在 `smoke-test.sh` 補上檢查，並更新 README 的 API 表格。
+修改 API 後，送出前至少對改到的那一版跑一次 `local-up.sh` + `smoke-test.sh`（.NET 版另跑 `dotnet test`）。新增 endpoint 或改變行為時：兩版都要實作、同步更新 `openapi.yaml`（並跑 `npm run lint:openapi`）、在 `smoke-test.sh` 補上檢查，並更新 README 的 API 表格。
 
 ## 部署環境（staging）
 
@@ -100,6 +106,8 @@ cd apps/web && cp .dev.vars.example .dev.vars && npm run dev   # 前端本機開
 - **Cloudflare 新專案用 Workers，不用 Pages**：官方文件建議新專案改用 Workers Static Assets，Pages 只維護不加新功能。
 - **前端不直接呼叫 api-staging**：跨網域會被 CORS 擋，後端也沒有處理 `OPTIONS` 預檢。一律經 Worker 的 `/api/<backend>/` 代轉；新增後端時在 `worker.js` 的 `BACKENDS` 與 `wrangler.jsonc` 的 `vars` 各加一筆。
 - **前端不要再加 GitHub Actions 的部署 workflow**：部署已由 Workers Builds 負責，兩邊都部署會重複。Worker 名稱必須與 `wrangler.jsonc` 的 `name`（`devbuildsample-web`）一致，改名要同時改 dashboard。
+- **請求紀錄格式兩版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要兩版一起改並更新 `ci-node.yml`、`ci-dotnet.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
+- **Swagger UI 的 CDN 版本要連同 SRI 一起更新**：`docs/index.html` 的 `integrity` 雜湊取自 npm 上同版本的 `swagger-ui-dist`（`npm pack` 後 `openssl dgst -sha384 -binary <檔案> | openssl base64 -A`），只改版本不改雜湊，瀏覽器會拒絕載入。
 - **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
 - GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 

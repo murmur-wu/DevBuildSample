@@ -33,6 +33,14 @@ jobs:
         run: ./scripts/smoke-test.sh http://127.0.0.1:3000
       - name: Smoke test（帶路徑前綴 /node）
         run: ./scripts/smoke-test.sh http://127.0.0.1:3000/node
+      - name: 請求紀錄
+        run: |
+          logs=$(./scripts/local-up.sh node logs)
+          # 每個請求一行「方法 路徑 狀態碼 耗時」，路徑含前綴
+          grep -Eq 'POST /node/items 201 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 POST /node/items 的請求紀錄"; echo "$logs"; exit 1; }
+          grep -Eq 'GET /node/items/abc 404 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 404 的請求紀錄"; exit 1; }
+          # 成功的 /health 不記錄（healthcheck 會洗版）
+          if grep -Eq 'GET (/node)?/health 200 ' <<<"$logs"; then echo "::error::成功的 /health 不應該被記錄"; exit 1; fi
       - name: Logs on failure
         if: failure()
         run: ./scripts/local-up.sh node logs

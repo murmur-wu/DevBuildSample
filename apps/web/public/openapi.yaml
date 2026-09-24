@@ -1,0 +1,211 @@
+openapi: 3.1.0
+info:
+  title: DevBuildSample API
+  version: 1.0.0
+  summary: 待辦清單 API（Node 版與 .NET 版共同的規格）
+  description: |
+    同一份規格由兩個後端實作：`apps/api`（Node 22）與 `apps/api-dotnet`（.NET 10）。
+    兩者的欄位名稱、狀態碼與錯誤訊息必須與本文件一致，並以 `scripts/smoke-test.sh` 驗收。
+
+    已知且可接受的差異：
+    - `created_at` / `updated_at` 的精度：Node 為毫秒、.NET 為微秒（都是 ISO 8601）。
+    - `GET /` 的 `name`：Node 為 `api`、.NET 為 `api-dotnet`。
+
+    本頁的「Try it out」會經過前端 Worker 的 `/api/<backend>/` 代轉到 staging 後端，**會實際寫入資料庫**。
+servers:
+  - url: /api/node
+    description: Node 版（經前端 Worker 代轉）
+  - url: /api/dotnet
+    description: .NET 版（經前端 Worker 代轉）
+tags:
+  - name: system
+    description: 健康檢查與版本
+  - name: items
+    description: 待辦事項 CRUD
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: 健康檢查（會實際查詢資料庫）
+      responses:
+        "200":
+          description: API 與資料庫都正常
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok, db: ok, version: 67fbfa15e74f4cdaa4358e79461eab93268b3955 }
+        "503":
+          description: 資料庫連不上
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthError" }
+  /:
+    get:
+      tags: [system]
+      operationId: getInfo
+      summary: 服務名稱與版本
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Info" }
+  /items:
+    get:
+      tags: [items]
+      operationId: listItems
+      summary: 列出全部項目（依 id 排序）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Item" }
+    post:
+      tags: [items]
+      operationId: createItem
+      summary: 新增項目
+      requestBody:
+        $ref: "#/components/requestBodies/ItemInput"
+      responses:
+        "201":
+          description: 已建立
+          headers:
+            Location:
+              description: 新項目的網址（包含路徑前綴，例如 `/api/node/items/1`）
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+  /items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: 項目 id；不是 1 以上的整數（例如 `abc`、`0`）時一律回 404
+        schema: { type: integer, minimum: 1, maximum: 2147483647 }
+    get:
+      tags: [items]
+      operationId: getItem
+      summary: 取得單筆
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "404": { $ref: "#/components/responses/ItemNotFound" }
+    put:
+      tags: [items]
+      operationId: updateItem
+      summary: 整筆更新
+      requestBody:
+        $ref: "#/components/requestBodies/ItemInput"
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ItemNotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+    delete:
+      tags: [items]
+      operationId: deleteItem
+      summary: 刪除
+      responses:
+        "204":
+          description: 已刪除
+        "404": { $ref: "#/components/responses/ItemNotFound" }
+components:
+  schemas:
+    Item:
+      type: object
+      required: [id, name, done, created_at, updated_at]
+      properties:
+        id: { type: integer, minimum: 1, example: 1 }
+        name: { type: string, example: 買牛奶 }
+        done: { type: boolean, example: false }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ItemInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: 前後空白會被去掉；去掉後不可為空，最多 200 字
+          minLength: 1
+          maxLength: 200
+          example: 買牛奶
+        done:
+          type: [boolean, "null"]
+          description: 省略或 null 時為 false
+          default: false
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, const: ok }
+        db: { type: string, const: ok }
+        version: { type: string, description: 部署的 git commit SHA（本機為 local 或 dev） }
+    HealthError:
+      type: object
+      required: [status, db]
+      properties:
+        status: { type: string, const: error }
+        db: { type: string, description: 資料庫錯誤訊息 }
+    Info:
+      type: object
+      required: [name, version]
+      properties:
+        name: { type: string, enum: [api, api-dotnet] }
+        version: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+  requestBodies:
+    ItemInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ItemInput" }
+  responses:
+    BadRequest:
+      description: 輸入不正確
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            nameRequired: { value: { error: name is required } }
+            nameTooLong: { value: { error: name must be at most 200 characters } }
+            doneNotBoolean: { value: { error: done must be a boolean } }
+            invalidJson: { value: { error: invalid JSON } }
+    ItemNotFound:
+      description: 找不到項目（或 id 不是正整數）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: item not found }
+    PayloadTooLarge:
+      description: body 超過 64KB
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: body too large }
+    UnsupportedMediaType:
+      description: content-type 不是 application/json
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: content-type must be application/json }
