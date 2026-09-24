@@ -142,6 +142,7 @@ sudo docker exec myapp-dotnet-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 
   CD 的「Check env file」步驟會在部署前檢查這個檔案，缺少時直接失敗並提示。
 - self-hosted runner 註冊時帶 `--labels staging`。
+- 基底 image（Node、.NET、PostgreSQL）以 digest 鎖定，平常部署只下載幾 KB 的程式層，約 20–30 秒完成；基底更新由 Dependabot 每週一開 PR，合併那次部署會比較久。部署步驟有時間上限（下載 20 分鐘、啟動 3 分鐘），卡住會直接失敗並印出容器 log。
 - 回滾：Actions → **CD (Node)** 或 **CD (.NET)** → Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。
 - 兩版的部署都跑在同一個 runner（`cd-vm`）上，同時觸發時會排隊依序執行。
 

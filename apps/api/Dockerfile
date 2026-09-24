@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# 基底 image 以 digest 鎖定：平常部署只需下載幾 KB 的程式層；更新由 Dependabot 開 PR（.github/dependabot.yml）
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
