@@ -1,0 +1,59 @@
+name: CI (PHP)
+on:
+  pull_request:
+    paths:
+      - apps/api-php/**
+      - deploy/docker-compose.php.yml
+      - deploy/docker-compose.php.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-php.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api-php/**
+      - deploy/docker-compose.php.yml
+      - deploy/docker-compose.php.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-php.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: phpunit（在 composer 官方容器中執行，與本機相同）
+        run: |
+          docker run --rm -v "$PWD/apps/api-php:/app" -w /app composer:2 \
+            sh -c 'composer install --no-interaction --no-progress && vendor/bin/phpunit'
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh php
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3002
+      - name: Smoke test（帶路徑前綴 /php）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3002/php
+      - name: 請求紀錄
+        run: |
+          logs=$(./scripts/local-up.sh php logs)
+          # 每個請求一行「方法 路徑 狀態碼 耗時」，路徑含前綴
+          grep -Eq 'POST /php/items 201 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 POST /php/items 的請求紀錄"; echo "$logs"; exit 1; }
+          grep -Eq 'GET /php/items/abc 404 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 404 的請求紀錄"; exit 1; }
+          # 成功的 /health 不記錄（healthcheck 會洗版）
+          if grep -Eq 'GET (/php)?/health 200 ' <<<"$logs"; then echo "::error::成功的 /health 不應該被記錄"; exit 1; fi
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh php logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh php clean

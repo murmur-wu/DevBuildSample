@@ -1,0 +1,13 @@
+# FrankenPHP（內建 Caddy）設定：只聽容器內 8080 的 HTTP，HTTPS 由 Cloudflare Tunnel 負責。
+{
+	admin off
+	auto_https off
+	frankenphp
+}
+
+:8080 {
+	root * /app/public
+	# 所有路徑都交給 index.php，路由在 PHP 裡處理（REQUEST_URI 仍是原本的路徑）
+	rewrite * /index.php
+	php
+}

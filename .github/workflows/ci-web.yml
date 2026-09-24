@@ -23,10 +23,11 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v6
-      - name: 啟動兩個後端（node:3000、dotnet:3001）
+      - name: 啟動三個後端（node:3000、dotnet:3001、php:3002）
         run: |
           ./scripts/local-up.sh node
           ./scripts/local-up.sh dotnet
+          ./scripts/local-up.sh php
       - name: 安裝 wrangler
         working-directory: apps/web
         run: |
@@ -57,14 +58,18 @@ jobs:
         run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/node
       - name: Smoke test（經 Worker 代轉到 .NET）
         run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet
+      - name: Smoke test（經 Worker 代轉到 PHP）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/php
       - name: Logs on failure
         if: failure()
         run: |
           cat apps/web/wrangler.log || true
           ./scripts/local-up.sh node logs
           ./scripts/local-up.sh dotnet logs
+          ./scripts/local-up.sh php logs
       - name: Tear down
         if: always()
         run: |
           ./scripts/local-up.sh node clean
           ./scripts/local-up.sh dotnet clean
+          ./scripts/local-up.sh php clean
