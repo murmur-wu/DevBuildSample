@@ -1,5 +1,5 @@
 # 基底 image 以 digest 鎖定：平常部署只需下載程式層；更新由 Dependabot 開 PR（.github/dependabot.yml）
-FROM maven:3-eclipse-temurin-25-alpine@sha256:eedc40918742f8a64d876a47db1fea211aa66e5f8ecd3bbc7ec9228a62e431d6 AS build
+FROM maven:3-eclipse-temurin-26-alpine@sha256:47da6465f015ac039849d9945219b9d08d6bc4d5afa2dea2aaee6be405155f97 AS build
 WORKDIR /src
 # 先只下載依賴（pom.xml 沒變時可沿用這一層的快取）
 COPY pom.xml .
