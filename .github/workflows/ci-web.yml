@@ -22,7 +22,7 @@ jobs:
     env:
       WRANGLER_SEND_METRICS: "false"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: 啟動六個後端（node:3000、dotnet:3001、php:3002、python:3003、go:3004、java:3005）
         run: |
           for app in node dotnet php python go java; do ./scripts/local-up.sh "$app"; done

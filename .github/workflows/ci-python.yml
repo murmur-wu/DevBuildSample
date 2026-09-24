@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: pytest（在 python 官方容器中執行，與本機相同）
         run: |
           docker run --rm -v "$PWD/apps/api-python:/app" -w /app -e PYTHONDONTWRITEBYTECODE=1 python:3.14-alpine \
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build and start api + db
         run: ./scripts/local-up.sh python
       - name: Smoke test
