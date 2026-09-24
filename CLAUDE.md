@@ -135,6 +135,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **請求紀錄格式各版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要各版一起改並更新各 `ci-<key>.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
 - **Swagger UI 的 CDN 版本要連同 SRI 一起更新**：`docs/index.html` 的 `integrity` 雜湊取自 npm 上同版本的 `swagger-ui-dist`（`npm pack` 後 `openssl dgst -sha384 -binary <檔案> | openssl base64 -A`），只改版本不改雜湊，瀏覽器會拒絕載入。
 - **基底 image 一律以 digest 鎖定**（`node:22-alpine@sha256:…`、`aspnet:10.0-alpine@sha256:…`、`frankenphp:1-php8.5-alpine@sha256:…`、`python:3.14-alpine@sha256:…`、`golang`/`alpine`、`maven`/`eclipse-temurin`、`postgres:17@sha256:…`）：曾因 `node:22-alpine` 沒鎖定，官方更新後 buildserver 要重新下載約 55MB 的基底層，加上下載速度只有約 100KB/s，一次部署花了 9 分鐘（.NET 同時只花 12 秒）。更新一律透過 Dependabot 的 PR，合併那次部署會比較久。改 `FROM` 或 compose 的 `image` 時要保留 `@sha256:`。
+- **Java 的編譯 image 不跟 Dependabot 換 JDK**：`maven:3-eclipse-temurin-25-alpine` 的版本號是開頭的 Maven 3，JDK 25 在後綴裡，Dependabot 曾開 PR 把它換成非 LTS 的 JDK 26（PR #12，已關閉）。`dependabot.yml` 對 `maven` 忽略小版本與修訂版更新，只保留 digest 更新；編譯與執行一律用同一個 Java LTS（目前 25），要換時手動改 Dockerfile、`pom.xml` 的 `java.version` 與 `ci-java.yml`。
 - **不要讓 postgres 自動升主版本**：17→18 資料目錄格式不相容，直接換 image 會讓 DB 起不來，需要 `pg_upgrade` 或匯出匯入。`dependabot.yml` 已忽略所有主版本升級。
 - **`docker compose up --wait` 預設沒有上限**：容器一直重啟時會無限等待並擋住後面排隊的部署，所以一律加 `--wait-timeout`。
 - **FrankenPHP 官方 image 沒有 PostgreSQL 驅動**：Dockerfile 以 image 內建的 `install-php-extensions pdo_pgsql` 安裝（build 時要能連到 Alpine 套件庫）。
@@ -156,7 +157,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **Spring Boot 4 用 Jackson 3**：套件是 `tools.jackson.*`（不是 `com.fasterxml.jackson.databind`），`isTextual()`/`asText()` 改名為 `isString()`/`stringValue()`；註解（`@JsonInclude` 等）仍在 `com.fasterxml.jackson.annotation`。
 - **前端的後端按鈕**：超過五個在手機上一行放不下，`style.css` 在 560px 以下改成三欄格狀排列；再加後端時要確認手機寬度（320px）沒有橫向捲動。
 - **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
-- GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
+- GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v7`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 
 ## Git 與 PR 慣例
 
