@@ -23,12 +23,9 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v6
-      - name: 啟動四個後端（node:3000、dotnet:3001、php:3002、python:3003）
+      - name: 啟動六個後端（node:3000、dotnet:3001、php:3002、python:3003、go:3004、java:3005）
         run: |
-          ./scripts/local-up.sh node
-          ./scripts/local-up.sh dotnet
-          ./scripts/local-up.sh php
-          ./scripts/local-up.sh python
+          for app in node dotnet php python go java; do ./scripts/local-up.sh "$app"; done
       - name: 安裝 wrangler
         working-directory: apps/web
         run: |
@@ -63,18 +60,16 @@ jobs:
         run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/php
       - name: Smoke test（經 Worker 代轉到 Python）
         run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/py
+      - name: Smoke test（經 Worker 代轉到 Go）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/go
+      - name: Smoke test（經 Worker 代轉到 Java）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/java
       - name: Logs on failure
         if: failure()
         run: |
           cat apps/web/wrangler.log || true
-          ./scripts/local-up.sh node logs
-          ./scripts/local-up.sh dotnet logs
-          ./scripts/local-up.sh php logs
-          ./scripts/local-up.sh python logs
+          for app in node dotnet php python go java; do ./scripts/local-up.sh "$app" logs; done
       - name: Tear down
         if: always()
         run: |
-          ./scripts/local-up.sh node clean
-          ./scripts/local-up.sh dotnet clean
-          ./scripts/local-up.sh php clean
-          ./scripts/local-up.sh python clean
+          for app in node dotnet php python go java; do ./scripts/local-up.sh "$app" clean; done

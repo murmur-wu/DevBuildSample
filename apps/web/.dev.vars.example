@@ -3,3 +3,5 @@ NODE_API=http://127.0.0.1:3000/node
 DOTNET_API=http://127.0.0.1:3001/dotnet
 PHP_API=http://127.0.0.1:3002/php
 PY_API=http://127.0.0.1:3003/py
+GO_API=http://127.0.0.1:3004/go
+JAVA_API=http://127.0.0.1:3005/java

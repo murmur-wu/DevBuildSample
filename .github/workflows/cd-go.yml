@@ -1,0 +1,35 @@
+name: CD (Go)
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api-go/**
+      - deploy/docker-compose.go.yml
+      - scripts/smoke-test.sh
+      - .github/workflows/cd-go.yml
+      - .github/workflows/_build-deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 回滾用：填舊的 git SHA，只跑 deploy
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging-go
+  cancel-in-progress: false
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      image_name: api-go
+      context: ./apps/api-go
+      compose_file: deploy/docker-compose.go.yml
+      project: myapp-go
+      port: 3004
+      path_base: /go
+      image_tag: ${{ inputs.image_tag }}

@@ -81,6 +81,20 @@ h1 { margin: 0; font-size: 1.4rem; }
   color: var(--accent-text);
 }
 
+/* 窄螢幕（手機）：六個後端排成一行放不下，改成三欄兩列、佔滿整行 */
+@media (max-width: 560px) {
+  .backend {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    border-radius: 14px;
+  }
+  .backend button {
+    padding: 6px 4px;
+    border-radius: 10px;
+  }
+}
+
 .status {
   margin: 12px 0 20px;
   font-size: 0.85rem;

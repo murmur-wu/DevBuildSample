@@ -1,0 +1,9 @@
+# Java 版本地測試用 override：不從 GHCR pull，直接用原始碼 build。
+services:
+  api:
+    image: devbuildsample/api-java:local
+    build:
+      context: ../apps/api-java
+      args:
+        APP_VERSION: local
+    pull_policy: build
