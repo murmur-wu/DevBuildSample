@@ -1,0 +1,59 @@
+name: CI (Java)
+on:
+  pull_request:
+    paths:
+      - apps/api-java/**
+      - deploy/docker-compose.java.yml
+      - deploy/docker-compose.java.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-java.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api-java/**
+      - deploy/docker-compose.java.yml
+      - deploy/docker-compose.java.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-java.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: mvn test（在 maven 官方容器中執行，與本機相同；含不需資料庫的 HTTP 測試）
+        run: |
+          docker run --rm -v "$PWD/apps/api-java:/src" -w /src maven:3-eclipse-temurin-25-alpine \
+            mvn -B -q test
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh java
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3005
+      - name: Smoke test（帶路徑前綴 /java）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3005/java
+      - name: 請求紀錄
+        run: |
+          logs=$(./scripts/local-up.sh java logs)
+          # 每個請求一行「方法 路徑 狀態碼 耗時」，路徑含前綴
+          grep -Eq 'POST /java/items 201 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 POST /java/items 的請求紀錄"; echo "$logs"; exit 1; }
+          grep -Eq 'GET /java/items/abc 404 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 404 的請求紀錄"; exit 1; }
+          # 成功的 /health 不記錄（healthcheck 會洗版）
+          if grep -Eq 'GET (/java)?/health 200 ' <<<"$logs"; then echo "::error::成功的 /health 不應該被記錄"; exit 1; fi
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh java logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh java clean

@@ -1,0 +1,9 @@
+# Go 版本地測試用 override：不從 GHCR pull，直接用原始碼 build。
+services:
+  api:
+    image: devbuildsample/api-go:local
+    build:
+      context: ../apps/api-go
+      args:
+        APP_VERSION: local
+    pull_policy: build

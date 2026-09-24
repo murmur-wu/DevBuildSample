@@ -1,0 +1,59 @@
+name: CI (Go)
+on:
+  pull_request:
+    paths:
+      - apps/api-go/**
+      - deploy/docker-compose.go.yml
+      - deploy/docker-compose.go.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-go.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api-go/**
+      - deploy/docker-compose.go.yml
+      - deploy/docker-compose.go.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-go.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: gofmt、go vet、go test（在 golang 官方容器中執行，與本機相同）
+        run: |
+          docker run --rm -v "$PWD/apps/api-go:/src" -w /src golang:1.27-alpine \
+            sh -c 'test -z "$(gofmt -l .)" || { gofmt -l .; echo "請執行 gofmt -w ."; exit 1; }; go vet ./... && go test -count=1 ./...'
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh go
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3004
+      - name: Smoke test（帶路徑前綴 /go）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3004/go
+      - name: 請求紀錄
+        run: |
+          logs=$(./scripts/local-up.sh go logs)
+          # 每個請求一行「方法 路徑 狀態碼 耗時」，路徑含前綴
+          grep -Eq 'POST /go/items 201 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 POST /go/items 的請求紀錄"; echo "$logs"; exit 1; }
+          grep -Eq 'GET /go/items/abc 404 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 404 的請求紀錄"; exit 1; }
+          # 成功的 /health 不記錄（healthcheck 會洗版）
+          if grep -Eq 'GET (/go)?/health 200 ' <<<"$logs"; then echo "::error::成功的 /health 不應該被記錄"; exit 1; fi
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh go logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh go clean

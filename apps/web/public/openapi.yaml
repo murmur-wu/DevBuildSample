@@ -2,14 +2,14 @@ openapi: 3.1.0
 info:
   title: DevBuildSample API
   version: 1.0.0
-  summary: 待辦清單 API（Node、.NET、PHP、Python 四版共同的規格）
+  summary: 待辦清單 API（Node、.NET、PHP、Python、Go、Java 六版共同的規格）
   description: |
-    同一份規格由四個後端實作：`apps/api`（Node 22）、`apps/api-dotnet`（.NET 10）、`apps/api-php`（PHP 8.5 + FrankenPHP）
-    與 `apps/api-python`（Python 3.14 + FastAPI）。四者的欄位名稱、狀態碼與錯誤訊息必須與本文件一致，並以 `scripts/smoke-test.sh` 驗收。
+    同一份規格由六個後端實作：`apps/api`（Node 22）、`apps/api-dotnet`（.NET 10）、`apps/api-php`（PHP 8.5 + FrankenPHP）、
+    `apps/api-python`（Python 3.14 + FastAPI）、`apps/api-go`（Go 1.27）與 `apps/api-java`（Java 25 + Spring Boot）。六者的欄位名稱、狀態碼與錯誤訊息必須與本文件一致，並以 `scripts/smoke-test.sh` 驗收。
 
     已知且可接受的差異：
-    - `created_at` / `updated_at` 的精度：Node 為毫秒、.NET、PHP 與 Python 為微秒（都是 ISO 8601）。
-    - `GET /` 的 `name`：Node 為 `api`、.NET 為 `api-dotnet`、PHP 為 `api-php`、Python 為 `api-python`。
+    - `created_at` / `updated_at` 的精度：Node 為毫秒，其他各版為微秒（都是 ISO 8601）。
+    - `GET /` 的 `name`：Node 為 `api`、.NET 為 `api-dotnet`、PHP 為 `api-php`、Python 為 `api-python`、Go 為 `api-go`、Java 為 `api-java`。
 
     本頁的「Try it out」會經過前端 Worker 的 `/api/<backend>/` 代轉到 staging 後端，**會實際寫入資料庫**。
 servers:
@@ -21,6 +21,10 @@ servers:
     description: PHP 版（經前端 Worker 代轉）
   - url: /api/py
     description: Python 版（經前端 Worker 代轉）
+  - url: /api/go
+    description: Go 版（經前端 Worker 代轉）
+  - url: /api/java
+    description: Java 版（經前端 Worker 代轉）
 tags:
   - name: system
     description: 健康檢查與版本
@@ -171,7 +175,7 @@ components:
       type: object
       required: [name, version]
       properties:
-        name: { type: string, enum: [api, api-dotnet, api-php, api-python] }
+        name: { type: string, enum: [api, api-dotnet, api-php, api-python, api-go, api-java] }
         version: { type: string }
     Error:
       type: object

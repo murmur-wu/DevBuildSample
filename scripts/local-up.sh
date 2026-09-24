@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 在本地 Ubuntu 上用原始碼 build 並啟動 api + db，最後打 /health 驗證。
-# 用法：scripts/local-up.sh [node|dotnet|php|python] [up|down|clean|logs]
-#   app     node（預設，port 3000）、dotnet（3001）、php（3002）或 python（3003）；可同時執行
+# 用法：scripts/local-up.sh [node|dotnet|php|python|go|java] [up|down|clean|logs]
+#   app     node（預設，port 3000）、dotnet（3001）、php（3002）、python（3003）、go（3004）或 java（3005）；可同時執行
 #   up      啟動並驗證（預設）
 #   down    停止（保留 DB volume）
 #   clean   停止並刪除 DB volume
@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../deploy"
 
 app=node
-if [[ "${1:-}" =~ ^(node|dotnet|php|python)$ ]]; then
+if [[ "${1:-}" =~ ^(node|dotnet|php|python|go|java)$ ]]; then
   app=$1
   shift
 fi
@@ -19,6 +19,8 @@ case $app in
   dotnet) project=myapp-dotnet-local; files=(-f docker-compose.dotnet.yml -f docker-compose.dotnet.local.yml); port=3001 ;;
   php)    project=myapp-php-local;    files=(-f docker-compose.php.yml -f docker-compose.php.local.yml);       port=3002 ;;
   python) project=myapp-python-local; files=(-f docker-compose.python.yml -f docker-compose.python.local.yml); port=3003 ;;
+  go)     project=myapp-go-local;     files=(-f docker-compose.go.yml -f docker-compose.go.local.yml);         port=3004 ;;
+  java)   project=myapp-java-local;   files=(-f docker-compose.java.yml -f docker-compose.java.local.yml);     port=3005 ;;
 esac
 
 export ENV_FILE="$PWD/.env"
@@ -29,7 +31,7 @@ case "${1:-up}" in
   down)  compose down; exit ;;
   clean) compose down -v; exit ;;
   logs)  compose logs --no-color; exit ;;
-  *)     echo "用法：$0 [node|dotnet|php|python] [up|down|clean|logs]" >&2; exit 1 ;;
+  *)     echo "用法：$0 [node|dotnet|php|python|go|java] [up|down|clean|logs]" >&2; exit 1 ;;
 esac
 
 if [[ ! -f .env ]]; then

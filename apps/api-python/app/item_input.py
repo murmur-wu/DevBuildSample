@@ -7,7 +7,7 @@ from typing import Any
 MAX_NAME_LENGTH = 200
 
 # 前後空白：Unicode 空白（含全形空白）再加上 BOM（U+FEFF），與 JavaScript 的 trim() 相近
-_TRIM = re.compile(r"^[\s﻿]+|[\s﻿]+$")
+_TRIM = re.compile(r"^[\s\ufeff]+|[\s\ufeff]+$")
 _ID = re.compile(r"[0-9]+")  # 只接受 ASCII 數字（str.isdigit() 會接受全形數字等）
 
 

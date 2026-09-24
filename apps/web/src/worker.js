@@ -4,7 +4,16 @@
 //   /api/dotnet/items  → DOTNET_API/items
 //   /api/php/items     → PHP_API/items
 //   /api/py/items      → PY_API/items
-const BACKENDS = { node: 'NODE_API', dotnet: 'DOTNET_API', php: 'PHP_API', py: 'PY_API' };
+//   /api/go/items      → GO_API/items
+//   /api/java/items    → JAVA_API/items
+const BACKENDS = {
+  node: 'NODE_API',
+  dotnet: 'DOTNET_API',
+  php: 'PHP_API',
+  py: 'PY_API',
+  go: 'GO_API',
+  java: 'JAVA_API',
+};
 
 function json(status, body) {
   return Response.json(body, { status });
