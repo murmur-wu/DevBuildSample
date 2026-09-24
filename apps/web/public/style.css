@@ -153,6 +153,7 @@ h1 { margin: 0; font-size: 1.4rem; }
 .empty { margin: 24px 0 8px; text-align: center; color: var(--muted); }
 
 .foot { margin-top: 24px; font-size: 0.8rem; color: var(--muted); }
+.foot a { color: var(--accent); margin-left: 4px; }
 
 .visually-hidden {
   position: absolute;

@@ -43,9 +43,14 @@ jobs:
           done
           cat wrangler.log
           exit 1
+      - name: OpenAPI 規格檢查
+        working-directory: apps/web
+        run: npm run lint:openapi
       - name: 靜態頁面
         run: |
           curl -fsS http://127.0.0.1:8787/ | grep -q '<title>DevBuildSample'
+          curl -fsS http://127.0.0.1:8787/docs/ | grep -q 'swagger-ui-bundle.js'
+          curl -fsS http://127.0.0.1:8787/openapi.yaml | grep -q '^openapi: 3.1'
           curl -fsS -o /dev/null http://127.0.0.1:8787/app.js
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/unknown/health)" = 404
       - name: Smoke test（經 Worker 代轉到 Node）

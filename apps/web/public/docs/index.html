@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevBuildSample API 文件</title>
+  <link rel="icon" href="data:,">
+  <!-- Swagger UI 由 jsDelivr 提供；固定版本並以 SRI 驗證檔案內容（雜湊取自 npm 上的 swagger-ui-dist@5.33.0） -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.0/swagger-ui.css"
+        integrity="sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW" crossorigin="anonymous">
+  <style>
+    body { margin: 0; }
+    .topbar-note { padding: 10px 16px; font: 14px system-ui, sans-serif; background: #fff8e1; border-bottom: 1px solid #f0e0a0; }
+    .topbar-note a { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="topbar-note">
+    上方 <strong>Servers</strong> 可切換 Node / .NET。「Try it out」會經前端 Worker 代轉到 staging 後端，<strong>會實際寫入資料庫</strong>。
+    <a href="/">← 回到待辦清單</a>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.0/swagger-ui-bundle.js"
+          integrity="sha384-YDALVcy8kj8yltLBVi1vBiBAUqdxvus673gM8XKwiy6aDUJFXivF/KCufekjYbVf" crossorigin="anonymous"></script>
+  <script src="/docs/init.js"></script>
+</body>
+</html>

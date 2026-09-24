@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Api;
 using Npgsql;
@@ -25,6 +26,31 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);
 
 var app = builder.Build();
+var pathBase = (Environment.GetEnvironmentVariable("PATH_BASE") ?? "").TrimEnd('/');
+
+// 請求紀錄：每個請求一行「方法 路徑 狀態碼 耗時」，例如 `POST /dotnet/items 201 4ms`（格式與 Node 版相同）。
+// 放在最前面，才拿得到含前綴的完整路徑與例外處理後的最終狀態碼。
+// 路徑不含 query string；成功的 /health 不記（docker healthcheck 每 10 秒打一次，會洗版）。
+app.Use(async (ctx, next) =>
+{
+    var start = Stopwatch.GetTimestamp();
+    var fullPath = ctx.Request.Path.Value ?? "/";
+    try
+    {
+        await next(ctx);
+    }
+    finally
+    {
+        var path = pathBase.Length > 0 && (fullPath == pathBase || fullPath.StartsWith(pathBase + "/", StringComparison.Ordinal))
+            ? fullPath[pathBase.Length..]
+            : fullPath;
+        if (!(ctx.Response.StatusCode == 200 && path == "/health"))
+        {
+            var ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            Console.WriteLine($"{ctx.Request.Method} {fullPath} {ctx.Response.StatusCode} {ms:0}ms");
+        }
+    }
+});
 
 app.UseExceptionHandler(e => e.Run(ctx =>
     Error(500, "internal error").ExecuteAsync(ctx)));
@@ -32,8 +58,8 @@ app.UseExceptionHandler(e => e.Run(ctx =>
 // 對外經 tunnel 時網址帶前綴（例如 /dotnet），cloudflared 不會去掉，所以用 UsePathBase 去掉；
 // 沒帶前綴的請求（本機、healthcheck）照常處理。UsePathBase 之後必須明確呼叫 UseRouting，
 // 否則 Minimal API 會在最前面自動加上 routing，比對到的是還帶著前綴的路徑。
-if (Environment.GetEnvironmentVariable("PATH_BASE") is { Length: > 0 } pathBase)
-    app.UsePathBase(pathBase.TrimEnd('/'));
+if (pathBase.Length > 0)
+    app.UsePathBase(pathBase);
 app.UseRouting();
 
 app.MapGet("/health", async (ItemStore store) =>
