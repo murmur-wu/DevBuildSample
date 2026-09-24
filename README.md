@@ -33,7 +33,6 @@ scripts/vm/                            部署主機的一次性設定（tunnel�
 .github/workflows/cd-dotnet.yml        .NET：build → GHCR → 部署
 .github/workflows/_build-deploy.yml    兩個 CD 共用的 build + deploy 流程
 .github/workflows/ci-web.yml           前端：wrangler dev + 經代轉跑兩個後端的 smoke test
-.github/workflows/cd-web.yml           前端：部署到 Cloudflare Workers，再對正式網址跑 smoke test
 ```
 
 ## 在本地 Ubuntu 測試後端
@@ -189,14 +188,30 @@ npm run dev                        # http://127.0.0.1:8787
 ../../scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet   # 經代轉跑 smoke test
 ```
 
-### 第一次部署前的設定（只做一次）
+### 部署：Cloudflare Workers Builds（Git 整合，只設定一次）
 
-1. **Cloudflare API token**：Cloudflare dashboard → 右上角帳號 → **Account API tokens** → **Create Token** → 範本 **Edit Cloudflare Workers** → 帳號選你自己的帳號 → 建立並複製 token。
-2. **Account ID**：dashboard 首頁 → **Workers & Pages**，右側可以看到 **Account ID**。
-3. **workers.dev 子網域**：第一次使用 Workers 時，在 **Workers & Pages** 頁面會要求設定一個子網域（例如 `murmur`），網址會是 `devbuildsample-web.murmur.workers.dev`。
-4. **GitHub secrets**：repo → **Settings** → **Secrets and variables** → **Actions** → 新增 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`。
+部署由 Cloudflare 直接連 GitHub repo 處理，GitHub 上不需要放任何 Cloudflare token。PR 的測試仍由 GitHub Actions 的 `ci-web.yml` 負責。
 
-之後只要改 `apps/web/` 並合併到 `main`，CD (Web) 就會自動部署，並對正式網址跑兩個後端的 smoke test。部署網址會顯示在 Actions 該次執行的 Summary。
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repository** → 選 GitHub，授權 **Cloudflare Workers & Pages** GitHub App 存取 `murmur-wu/DevBuildSample`。
+2. 設定：
+
+   | 欄位 | 值 |
+   |---|---|
+   | Project name | `devbuildsample-web`（**必須**與 `apps/web/wrangler.jsonc` 的 `name` 相同，否則 build 會失敗） |
+   | Production branch | `main` |
+   | Root directory | `apps/web` |
+   | Build command | 留空（沒有 build 步驟） |
+   | Deploy command | `npx wrangler deploy` |
+   | Build watch paths（Settings → Builds） | Include：`apps/web/*`（只有前端變動才部署） |
+
+3. 第一次使用 Workers 時會要求設定 workers.dev 子網域（例如 `murmur`），網址會是 `https://devbuildsample-web.murmur.workers.dev`。
+
+之後只要改 `apps/web/` 並合併到 `main`，Cloudflare 就會自動部署；GitHub 的 commit 旁會出現 Cloudflare 的 check run。部署後可以手動跑一次完整驗證：
+
+```bash
+./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/node
+./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/dotnet
+```
 
 ### 綁自訂網域（選用）
 
@@ -206,5 +221,5 @@ npm run dev                        # http://127.0.0.1:8787
 "routes": [{ "pattern": "app-staging.heitang.info", "custom_domain": true }]
 ```
 
-合併後 CD 會自動建立 DNS 與憑證。子網域一樣只能一層。
+合併後 Workers Builds 部署時會自動建立 DNS 與憑證。子網域一樣只能一層。
 

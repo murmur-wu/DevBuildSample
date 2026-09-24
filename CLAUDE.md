@@ -18,7 +18,7 @@
 | 對外網址（PATH_BASE） | `https://api-staging.heitang.info/node/...`（`/node`） | `https://api-staging.heitang.info/dotnet/...`（`/dotnet`） |
 | CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml` / `cd-dotnet.yml` |
 
-前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/node/*`、`/api/dotnet/*` 由 `src/worker.js` 代轉到 `NODE_API`、`DOTNET_API`（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI/CD：`ci-web.yml` / `cd-web.yml`。
+前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/node/*`、`/api/dotnet/*` 由 `src/worker.js` 代轉到 `NODE_API`、`DOTNET_API`（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI：`ci-web.yml`（GitHub Actions）；CD：Cloudflare **Workers Builds**（Git 整合，root directory `apps/web`、watch paths `apps/web/*`，設定在 Cloudflare dashboard，不在 repo 裡）。
 
 **兩版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，另一版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒、.NET 微秒）、`GET /` 的 `name`（`api` / `api-dotnet`）。
 
@@ -45,7 +45,6 @@ scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安�
 .github/workflows/cd-dotnet.yml           .NET：呼叫 _build-deploy.yml
 .github/workflows/_build-deploy.yml       共用：雲端 build → GHCR → self-hosted runner 部署 → /health → smoke test
 .github/workflows/ci-web.yml              前端：wrangler dev 代轉到本機兩個後端，跑 smoke test
-.github/workflows/cd-web.yml              前端：wrangler deploy → 對部署網址跑 smoke test（需 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID secrets）
 .github/actionlint.yaml                   宣告自訂 runner label（staging），供 actionlint 檢查
 apps/web/public/                          前端靜態頁面（純 HTML/CSS/JS，無 build 步驟）
 apps/web/src/worker.js                    API 代轉，改寫 Location header
@@ -100,6 +99,7 @@ cd apps/web && cp .dev.vars.example .dev.vars && npm run dev   # 前端本機開
 - **ufw 會鎖掉 SSH**：`ufw default deny incoming` 前必須先 `ufw allow OpenSSH`；`setup-firewall.sh` 預設會保留。
 - **Cloudflare 新專案用 Workers，不用 Pages**：官方文件建議新專案改用 Workers Static Assets，Pages 只維護不加新功能。
 - **前端不直接呼叫 api-staging**：跨網域會被 CORS 擋，後端也沒有處理 `OPTIONS` 預檢。一律經 Worker 的 `/api/<backend>/` 代轉；新增後端時在 `worker.js` 的 `BACKENDS` 與 `wrangler.jsonc` 的 `vars` 各加一筆。
+- **前端不要再加 GitHub Actions 的部署 workflow**：部署已由 Workers Builds 負責，兩邊都部署會重複。Worker 名稱必須與 `wrangler.jsonc` 的 `name`（`devbuildsample-web`）一致，改名要同時改 dashboard。
 - **切換後端時要先清空畫面**：否則新資料回來前會短暫顯示上一個後端的資料（`app.js` 的 `showLoading()`）。
 - GitHub Actions 需使用 Node 24 版本的 action（`actions/checkout@v6`、`docker/login-action@v4`、`docker/build-push-action@v7`），舊版會出現 Node 20 停用警告。
 
