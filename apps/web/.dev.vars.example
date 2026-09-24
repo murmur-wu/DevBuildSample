@@ -1,0 +1,3 @@
+# 複製成 .dev.vars 後執行 npm run dev：Worker 改為代轉到本機的後端（先用 scripts/local-up.sh 啟動）
+NODE_API=http://127.0.0.1:3000/node
+DOTNET_API=http://127.0.0.1:3001/dotnet

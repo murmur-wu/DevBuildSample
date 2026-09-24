@@ -1,0 +1,65 @@
+name: CI (Web)
+on:
+  pull_request:
+    paths:
+      - apps/web/**
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-web.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-web.yml
+
+permissions:
+  contents: read
+
+jobs:
+  proxy-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - name: 啟動兩個後端（node:3000、dotnet:3001）
+        run: |
+          ./scripts/local-up.sh node
+          ./scripts/local-up.sh dotnet
+      - name: 安裝 wrangler
+        working-directory: apps/web
+        run: |
+          node --version
+          npm ci
+      - name: 啟動 Worker（wrangler dev，代轉到本機後端）
+        working-directory: apps/web
+        run: |
+          cp .dev.vars.example .dev.vars
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
+          for _ in $(seq 60); do
+            curl -fs -o /dev/null http://127.0.0.1:8787/ && exit 0
+            sleep 1
+          done
+          cat wrangler.log
+          exit 1
+      - name: 靜態頁面
+        run: |
+          curl -fsS http://127.0.0.1:8787/ | grep -q '<title>DevBuildSample'
+          curl -fsS -o /dev/null http://127.0.0.1:8787/app.js
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/unknown/health)" = 404
+      - name: Smoke test（經 Worker 代轉到 Node）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/node
+      - name: Smoke test（經 Worker 代轉到 .NET）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet
+      - name: Logs on failure
+        if: failure()
+        run: |
+          cat apps/web/wrangler.log || true
+          ./scripts/local-up.sh node logs
+          ./scripts/local-up.sh dotnet logs
+      - name: Tear down
+        if: always()
+        run: |
+          ./scripts/local-up.sh node clean
+          ./scripts/local-up.sh dotnet clean
