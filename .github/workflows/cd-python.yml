@@ -11,12 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 回滾用：填舊的 git SHA，只跑 deploy
+        description: 回滾用：填舊的 git SHA（須是改用 Docker Hub 之後的 commit），只跑 deploy
         required: false
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: deploy-staging-python
@@ -26,10 +25,11 @@ jobs:
   cd:
     uses: ./.github/workflows/_build-deploy.yml
     with:
-      image_name: api-python
+      tag_prefix: python
       context: ./apps/api-python
       compose_file: deploy/docker-compose.python.yml
       project: myapp-python
       port: 3003
       path_base: /py
       image_tag: ${{ inputs.image_tag }}
+    secrets: inherit   # DOCKERHUB_USERNAME、DOCKERHUB_TOKEN

@@ -15,7 +15,7 @@
 
 前端（`apps/web/`）是部署在 Cloudflare Workers 的待辦清單頁面，可切換六個後端；瀏覽器只呼叫同網域的 `/api/...`，由 Worker 代轉到後端（見「前端」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，其他各版也一樣。
 
-部署採 pull-based CD：GitHub Actions 雲端 build → GHCR → VM 上的 self-hosted runner `docker compose pull && up -d`。架構決策見 [docs/adr/0001-pull-based-deploy.md](docs/adr/0001-pull-based-deploy.md)。
+部署採 pull-based CD：GitHub Actions 雲端 build → Docker Hub（private repo `murmur20260202/devbuildsample`，各版以 tag 區分）→ VM 上的 self-hosted runner `docker compose pull && up -d`。架構決策見 [docs/adr/0001-pull-based-deploy.md](docs/adr/0001-pull-based-deploy.md)。
 
 ```
 apps/api/                              Node 版原始碼 + Dockerfile
@@ -43,19 +43,19 @@ scripts/vm/                            部署主機的一次性設定（tunnel�
 .github/workflows/ci-python.yml        Python：pytest + smoke test
 .github/workflows/ci-go.yml            Go：gofmt、go vet、go test + smoke test
 .github/workflows/ci-java.yml          Java：mvn test + smoke test
-.github/workflows/cd-node.yml          Node：build → GHCR → 部署
-.github/workflows/cd-dotnet.yml        .NET：build → GHCR → 部署
-.github/workflows/cd-php.yml           PHP：build → GHCR → 部署
-.github/workflows/cd-python.yml        Python：build → GHCR → 部署
-.github/workflows/cd-go.yml            Go：build → GHCR → 部署
-.github/workflows/cd-java.yml          Java：build → GHCR → 部署
+.github/workflows/cd-node.yml          Node：build → Docker Hub → 部署
+.github/workflows/cd-dotnet.yml        .NET：build → Docker Hub → 部署
+.github/workflows/cd-php.yml           PHP：build → Docker Hub → 部署
+.github/workflows/cd-python.yml        Python：build → Docker Hub → 部署
+.github/workflows/cd-go.yml            Go：build → Docker Hub → 部署
+.github/workflows/cd-java.yml          Java：build → Docker Hub → 部署
 .github/workflows/_build-deploy.yml    各版 CD 共用的 build + deploy 流程
 .github/workflows/ci-web.yml           前端：wrangler dev + 經代轉跑六個後端的 smoke test
 ```
 
 ## 在本地 Ubuntu 測試後端
 
-只需要 Docker（部署步驟的第 1 步），不需要 runner、tunnel、GHCR。
+只需要 Docker（部署步驟的第 1 步），不需要 runner、tunnel、Docker Hub 帳號。
 
 ```bash
 # 1. 裝 Docker Engine（官方 repo）
@@ -196,6 +196,7 @@ sudo docker exec myapp-python-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 
   CD 的「Check env file」步驟會在部署前檢查這個檔案，缺少時直接失敗並提示。
 - self-hosted runner 註冊時帶 `--labels staging`。
+- GitHub repo 的 Actions secrets 要有 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（Docker Hub → Account settings → Personal access tokens，權限 Read & Write）。CD 部署時會用它在 runner 上登入 Docker Hub，不用在主機上手動登入。
 - 記憶體：每版一組 api + PostgreSQL。本機實測閒置時 api 約 Go 6MB、Python 55MB、Java 190MB（heap 上限 256MB），每個 PostgreSQL 約 25–40MB。主機記憶體吃緊時可先停掉不用的版本：`sudo docker compose -p myapp-<版本> -f deploy/docker-compose.<版本>.yml down`（資料保留）。
 - 基底 image（各版的執行環境與 PostgreSQL）以 digest 鎖定，平常部署只下載幾 KB 的程式層，約 20–30 秒完成；基底更新由 Dependabot 每週一開 PR，合併那次部署會比較久。部署步驟有時間上限（下載 20 分鐘、啟動 3 分鐘），卡住會直接失敗並印出容器 log。
 - 回滾：Actions → 該版的 **CD (…)**（例如 **CD (Go)**）→ Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。

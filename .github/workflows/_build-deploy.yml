@@ -1,13 +1,17 @@
 # 共用的 build + deploy 流程，由各版的 cd-*.yml（node、dotnet、php、python、go、java）呼叫。
-# build：GitHub 雲端建置 image 推到 GHCR（tag = git SHA）；有 image_tag（回滾）時跳過。
+# build：GitHub 雲端建置 image 推到 Docker Hub（tag = <版本>-<git SHA>）；有 image_tag（回滾）時跳過。
 # deploy：在 self-hosted runner（label staging）上 pull + up，再跑 /health 與 smoke test。
+#
+# image 放在 Docker Hub 的一個 private repo，六個後端以 tag 前綴區分（免費方案只有 1 個 private repo）。
+# 原本放 GHCR，但 buildserver 從 GHCR 下載只有約 35–70KB/s（Docker Hub 約 6MB/s 以上），見 docs/adr/0007。
+# 需要 repo secrets：DOCKERHUB_USERNAME、DOCKERHUB_TOKEN（Read & Write 的 access token），呼叫端以 secrets: inherit 傳入。
 name: build-deploy
 
 on:
   workflow_call:
     inputs:
-      image_name:
-        description: GHCR 上的 image 名稱，例如 api、api-dotnet、api-go
+      tag_prefix:
+        description: image tag 的前綴（各版的 key），例如 node、dotnet、go
         type: string
         required: true
       context:
@@ -33,6 +37,14 @@ on:
         description: 回滾用的舊 git SHA；空白表示建置並部署目前 commit
         type: string
         default: ""
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+env:
+  IMAGE_REPO: docker.io/murmur20260202/devbuildsample
 
 jobs:
   build:
@@ -40,22 +52,21 @@ jobs:
     runs-on: ubuntu-latest        # 雲端 build，不吃 VM 資源
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v7
-      - name: Image name (GHCR 需全小寫)
-        run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_name }}" >> "$GITHUB_ENV"
       - uses: docker/login-action@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
           push: true
           build-args: APP_VERSION=${{ github.sha }}
-          tags: ${{ env.IMAGE_REPO }}:${{ github.sha }}
+          # <key>-latest 方便手動操作；部署一律用 <key>-<SHA>
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ inputs.tag_prefix }}-${{ github.sha }}
+            ${{ env.IMAGE_REPO }}:${{ inputs.tag_prefix }}-latest
 
   deploy:
     needs: build
@@ -65,16 +76,13 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: read
     env:
-      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+      IMAGE_TAG: ${{ inputs.tag_prefix }}-${{ inputs.image_tag || github.sha }}
       ENV_FILE: /srv/myapp/.env
       COMPOSE: docker compose -p ${{ inputs.project }} -f ${{ inputs.compose_file }}
       BASE_URL: http://127.0.0.1:${{ inputs.port }}
     steps:
       - uses: actions/checkout@v7
-      - name: Image name
-        run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_name }}" >> "$GITHUB_ENV"
       - name: Check env file
         run: |
           if [[ ! -r "$ENV_FILE" ]]; then
@@ -86,8 +94,12 @@ jobs:
             exit 1
           fi
           echo "$ENV_FILE OK"
-      - name: Login GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      # 登入後下載 private repo 的 image；postgres 等公開 image 也改以登入身分下載（下載次數額度較高）
+      - name: Login Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
       # 下載與啟動分開設上限：
       # - pull：基底 image 鎖定 digest 後平常只下載幾 KB，約 10–20 秒；基底更新或網路慢時可能要好幾分鐘，給足 20 分鐘
       # - up --wait：正常 5–10 秒就 healthy；超過 3 分鐘多半是容器一直重啟，直接失敗並由 Logs on failure 印出 log
@@ -106,6 +118,6 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: $COMPOSE logs --no-color --tail 100
-      - name: Logout GHCR
+      - name: Logout Docker Hub
         if: always()
-        run: docker logout ghcr.io
+        run: docker logout
