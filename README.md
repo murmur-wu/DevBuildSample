@@ -1,39 +1,43 @@
 # DevBuildSample
 
-最小範例後端，同一套 API 有兩種實作，各自獨立測試與部署：
+最小範例後端，同一套 API 有三種實作，各自獨立測試與部署：
 
-| | Node 版 | .NET 版 |
-|---|---|---|
-| 原始碼 | `apps/api/`（Node 22） | `apps/api-dotnet/`（.NET 10、ASP.NET Core Minimal API） |
-| 本機 port | 3000 | 3001 |
-| 資料庫 | 各自一個 PostgreSQL 17 容器與 volume | 同左 |
-| 對外網址 | `https://api-staging.heitang.info/node/...` | `https://api-staging.heitang.info/dotnet/...` |
-| CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml`（含 `dotnet test`）/ `cd-dotnet.yml` |
+| | Node 版 | .NET 版 | PHP 版 |
+|---|---|---|---|
+| 原始碼 | `apps/api/`（Node 22） | `apps/api-dotnet/`（.NET 10、ASP.NET Core Minimal API） | `apps/api-php/`（PHP 8.5、FrankenPHP） |
+| 本機 port | 3000 | 3001 | 3002 |
+| 資料庫 | 各自一個 PostgreSQL 17 容器與 volume | 同左 | 同左 |
+| 對外網址 | `https://api-staging.heitang.info/node/...` | `https://api-staging.heitang.info/dotnet/...` | `https://api-staging.heitang.info/php/...` |
+| CI / CD | `ci-node.yml` / `cd-node.yml` | `ci-dotnet.yml`（含 `dotnet test`）/ `cd-dotnet.yml` | `ci-php.yml`（含 PHPUnit）/ `cd-php.yml` |
 
-兩者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。
+三者 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。
 
-前端（`apps/web/`）是部署在 Cloudflare Workers 的待辦清單頁面，可切換 Node / .NET 後端；瀏覽器只呼叫同網域的 `/api/...`，由 Worker 代轉到後端（見「前端」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，反之亦然。
+前端（`apps/web/`）是部署在 Cloudflare Workers 的待辦清單頁面，可切換 Node / .NET / PHP 後端；瀏覽器只呼叫同網域的 `/api/...`，由 Worker 代轉到後端（見「前端」）。CI/CD 依修改的路徑觸發：改 `apps/api-dotnet/` 只會跑 .NET 的流程，其他兩版也一樣。
 
 部署採 pull-based CD：GitHub Actions 雲端 build → GHCR → VM 上的 self-hosted runner `docker compose pull && up -d`。架構決策見 [docs/adr/0001-pull-based-deploy.md](docs/adr/0001-pull-based-deploy.md)。
 
 ```
 apps/api/                              Node 版原始碼 + Dockerfile
 apps/api-dotnet/                       .NET 版：src/Api（API）、tests/Api.Tests（xUnit）、Dockerfile
+apps/api-php/                          PHP 版：public/index.php（路由）、src/（驗證與 SQL）、tests/（PHPUnit）、Dockerfile
 apps/web/                              前端：public/（靜態頁面）、src/worker.js（API 代轉）、wrangler.jsonc
-apps/web/public/openapi.yaml           API 規格（OpenAPI 3.1，兩版共同的契約），Swagger UI 在 /docs/
+apps/web/public/openapi.yaml           API 規格（OpenAPI 3.1，三版共同的契約），Swagger UI 在 /docs/
 deploy/docker-compose.yml              Node 版部署用（compose project：myapp）
 deploy/docker-compose.dotnet.yml       .NET 版部署用（compose project：myapp-dotnet）
+deploy/docker-compose.php.yml          PHP 版部署用（compose project：myapp-php）
 deploy/docker-compose*.local.yml       本地測試 override（改成原始碼 build）
-deploy/.env.example                    機敏設定範本（真正的 .env 永不進 git；兩版共用）
-scripts/local-up.sh                    本地一鍵啟動 + 驗證：local-up.sh [node|dotnet] [up|down|clean|logs]
-scripts/smoke-test.sh                  端到端測試（health + /items CRUD + 錯誤處理），兩版共用
+deploy/.env.example                    機敏設定範本（真正的 .env 永不進 git；三版共用）
+scripts/local-up.sh                    本地一鍵啟動 + 驗證：local-up.sh [node|dotnet|php] [up|down|clean|logs]
+scripts/smoke-test.sh                  端到端測試（health + /items CRUD + 錯誤處理），三版共用
 scripts/vm/                            部署主機的一次性設定（tunnel、防火牆、維運）
 .github/workflows/ci-node.yml          Node：smoke test
 .github/workflows/ci-dotnet.yml        .NET：dotnet test + smoke test
+.github/workflows/ci-php.yml           PHP：phpunit + smoke test
 .github/workflows/cd-node.yml          Node：build → GHCR → 部署
 .github/workflows/cd-dotnet.yml        .NET：build → GHCR → 部署
-.github/workflows/_build-deploy.yml    兩個 CD 共用的 build + deploy 流程
-.github/workflows/ci-web.yml           前端：wrangler dev + 經代轉跑兩個後端的 smoke test
+.github/workflows/cd-php.yml           PHP：build → GHCR → 部署
+.github/workflows/_build-deploy.yml    三個 CD 共用的 build + deploy 流程
+.github/workflows/ci-web.yml           前端：wrangler dev + 經代轉跑三個後端的 smoke test
 ```
 
 ## 在本地 Ubuntu 測試後端
@@ -52,20 +56,22 @@ sudo apt update   # 若 docker repo 404，把 docker.list 內的 codename 改成
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo usermod -aG docker $USER && newgrp docker
 
-# 2. 取得程式碼並啟動（兩版可以同時跑）
+# 2. 取得程式碼並啟動（三版可以同時跑）
 git clone https://github.com/murmur-wu/DevBuildSample.git && cd DevBuildSample
 ./scripts/local-up.sh node      # Node 版 → http://127.0.0.1:3000（省略 node 也可以）
 ./scripts/local-up.sh dotnet    # .NET 版 → http://127.0.0.1:3001
+./scripts/local-up.sh php       # PHP 版 → http://127.0.0.1:3002
 # → 首次會自動產生 deploy/.env（隨機 DB 密碼），build image，等 healthcheck 通過
 # → 最後印出 {"status":"ok","db":"ok","version":"local"} 即成功
 
 # 3. 跑 smoke test（20 項檢查，全過會 exit 0）
 ./scripts/smoke-test.sh                          # 預設打 Node 版 http://127.0.0.1:3000
 ./scripts/smoke-test.sh http://127.0.0.1:3001    # .NET 版
+./scripts/smoke-test.sh http://127.0.0.1:3002    # PHP 版
 ./scripts/smoke-test.sh http://127.0.0.1:3001/dotnet    # 帶路徑前綴（模擬經 tunnel 的請求）
 ./scripts/smoke-test.sh https://api-staging.heitang.info/dotnet   # 也可以打其他環境
 
-# 4. 其他（app 參數：node 或 dotnet）
+# 4. 其他（app 參數：node、dotnet 或 php）
 ./scripts/local-up.sh dotnet logs    # 看 log
 ./scripts/local-up.sh dotnet down    # 停止（保留資料）
 ./scripts/local-up.sh dotnet clean   # 停止並清空 DB
@@ -81,10 +87,20 @@ docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src mcr.microsoft.com/dotnet/
 
 有裝 .NET 10 SDK 的話，直接在 `apps/api-dotnet/` 執行 `dotnet test`。
 
+### PHP 單元測試
+
+一樣用官方容器（composer 映像檔內含 PHP），CI 也是這樣跑：
+
+```bash
+docker run --rm -v "$PWD/apps/api-php:/app" -w /app composer:2 sh -c 'composer install && vendor/bin/phpunit'
+```
+
+composer 只用來裝 PHPUnit；正式 image 沒有任何外部套件，只多裝了 PostgreSQL 驅動（`pdo_pgsql`）。
+
 ## API
 
-完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，Node 與 .NET 兩版共同的契約）。
-互動式文件（Swagger UI）：前端網址的 `/docs/`，例如 `https://devbuildsample-web.<子網域>.workers.dev/docs/`。上方 **Servers** 可切換 Node / .NET，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，Node、.NET、PHP 三版共同的契約）。
+互動式文件（Swagger UI）：前端網址的 `/docs/`，例如 `https://devbuildsample-web.<子網域>.workers.dev/docs/`。上方 **Servers** 可切換 Node / .NET / PHP，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
 
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
@@ -97,7 +113,7 @@ docker run --rm -v "$PWD/apps/api-dotnet:/src" -w /src mcr.microsoft.com/dotnet/
 
 `name` 必填、最多 200 字；`done` 選填，須為布林。`items` 資料表在 API 啟動時自動建立（DB 還沒好會重試）。
 
-兩版回應相同（欄位 snake_case、狀態碼與錯誤訊息一致），唯一差異：`created_at` / `updated_at` 的精度，Node 為毫秒、.NET 為微秒（都是 ISO 8601）。`GET /` 的 `name` 分別為 `api`、`api-dotnet`。
+三版回應相同（欄位 snake_case、狀態碼與錯誤訊息一致），唯一差異：`created_at` / `updated_at` 的精度，Node 為毫秒、.NET 與 PHP 為微秒（都是 ISO 8601）。`GET /` 的 `name` 分別為 `api`、`api-dotnet`、`api-php`。
 
 ```bash
 curl -s -X POST localhost:3000/items -H 'content-type: application/json' -d '{"name":"買牛奶"}'
@@ -108,12 +124,13 @@ curl -s -X DELETE localhost:3000/items/1 -i
 
 ## 觀察後端：請求紀錄與資料庫
 
-兩個後端每收到一個請求都會寫一行紀錄，格式相同：`方法 路徑 狀態碼 耗時`（路徑含前綴、不含 query string；成功的 `/health` 不記，避免 healthcheck 洗版）。
+三個後端每收到一個請求都會寫一行紀錄，格式相同：`方法 路徑 狀態碼 耗時`（路徑含前綴、不含 query string；成功的 `/health` 不記，避免 healthcheck 洗版）。
 
 ```bash
 # 在 buildserver 上即時看請求（在前端操作時會一行一行出現）
 sudo docker logs -f --since 5m myapp-api-1           # Node
 sudo docker logs -f --since 5m myapp-dotnet-api-1    # .NET
+sudo docker logs -f --since 5m myapp-php-api-1       # PHP
 # 例：
 #   POST /node/items 201 5ms
 #   PUT /node/items/3 200 3ms
@@ -122,9 +139,10 @@ sudo docker logs -f --since 5m myapp-dotnet-api-1    # .NET
 # 直接查資料庫，確認資料真的寫進去（-U / -d 對應 /srv/myapp/.env 的 POSTGRES_USER / POSTGRES_DB）
 sudo docker exec myapp-db-1        psql -U postgres -d app -c 'SELECT * FROM items ORDER BY id;'
 sudo docker exec myapp-dotnet-db-1 psql -U postgres -d app -c 'SELECT * FROM items ORDER BY id;'
+sudo docker exec myapp-php-db-1    psql -U postgres -d app -c 'SELECT * FROM items ORDER BY id;'
 ```
 
-本機測試時容器名稱是 `myapp-local-*`、`myapp-dotnet-local-*`，或用 `./scripts/local-up.sh [node|dotnet] logs`。
+本機測試時容器名稱是 `myapp-local-*`、`myapp-dotnet-local-*`、`myapp-php-local-*`，或用 `./scripts/local-up.sh [node|dotnet|php] logs`。
 
 ## 部署到 staging VM
 
@@ -142,9 +160,9 @@ sudo docker exec myapp-dotnet-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 
   CD 的「Check env file」步驟會在部署前檢查這個檔案，缺少時直接失敗並提示。
 - self-hosted runner 註冊時帶 `--labels staging`。
-- 基底 image（Node、.NET、PostgreSQL）以 digest 鎖定，平常部署只下載幾 KB 的程式層，約 20–30 秒完成；基底更新由 Dependabot 每週一開 PR，合併那次部署會比較久。部署步驟有時間上限（下載 20 分鐘、啟動 3 分鐘），卡住會直接失敗並印出容器 log。
-- 回滾：Actions → **CD (Node)** 或 **CD (.NET)** → Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。
-- 兩版的部署都跑在同一個 runner（`cd-vm`）上，同時觸發時會排隊依序執行。
+- 基底 image（Node、.NET、FrankenPHP、PostgreSQL）以 digest 鎖定，平常部署只下載幾 KB 的程式層，約 20–30 秒完成；基底更新由 Dependabot 每週一開 PR，合併那次部署會比較久。部署步驟有時間上限（下載 20 分鐘、啟動 3 分鐘），卡住會直接失敗並印出容器 log。
+- 回滾：Actions → **CD (Node)**、**CD (.NET)** 或 **CD (PHP)** → Run workflow，`image_tag` 填舊的 git SHA（會跳過 build 只跑 deploy）。
+- 三版的部署都跑在同一個 runner（`cd-vm`）上，同時觸發時會排隊依序執行。
 
 ## 對外服務：Cloudflare Tunnel
 
@@ -153,18 +171,22 @@ sudo docker exec myapp-dotnet-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 ```bash
 ./scripts/vm/setup-tunnel.sh \
   api-staging.heitang.info/node=http://127.0.0.1:3000 \
-  api-staging.heitang.info/dotnet=http://127.0.0.1:3001
+  api-staging.heitang.info/dotnet=http://127.0.0.1:3001 \
+  api-staging.heitang.info/php=http://127.0.0.1:3002
 ```
+
+執行前先 `git checkout main && git pull`（腳本是在主機上的 clone 執行，不會隨 CD 更新）。新增後端時要**先**等它的 CD 部署成功，**再**更新 tunnel，否則新路徑會暫時 404/502。
 
 同一個網址用路徑前綴分流：
 
 ```
 https://api-staging.heitang.info/node/items    → Node（127.0.0.1:3000）
 https://api-staging.heitang.info/dotnet/items  → .NET（127.0.0.1:3001）
+https://api-staging.heitang.info/php/items     → PHP（127.0.0.1:3002）
 https://api-staging.heitang.info/其他路徑       → 404
 ```
 
-- **cloudflared 轉送時不會去掉前綴**：`/dotnet/items` 送到 .NET 時路徑仍是 `/dotnet/items`。所以兩個服務都用環境變數 `PATH_BASE`（設在 compose 檔）自己去掉前綴；沒帶前綴的請求（本機、healthcheck）照常處理。
+- **cloudflared 轉送時不會去掉前綴**：`/dotnet/items` 送到 .NET 時路徑仍是 `/dotnet/items`。所以每個服務都用環境變數 `PATH_BASE`（設在 compose 檔）自己去掉前綴；沒帶前綴的請求（本機、healthcheck）照常處理。
 - 每次都要列出**全部**路由：config 會依參數整份重寫，沒列到的路由會被移除。
 - 參數格式 `HOSTNAME[/PATH][=ORIGIN]`：`/PATH` 比對 `/PATH` 與 `/PATH/...`（不會誤中 `/PATHx`）；`=ORIGIN` 省略時為 `http://127.0.0.1:3000`；tunnel 名稱預設 `myapp-staging`（環境變數 `TUNNEL_NAME` 可覆寫）。
 - 前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。
@@ -189,7 +211,7 @@ sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數�
 - 每週清理 7 天前未使用的 Docker image / container / build cache（不動 volume，DB 資料安全）；紀錄：`journalctl -t docker-prune`
 - 沒有 swap 時建立 `/swapfile`
 - 啟用 unattended-upgrades 自動安裝安全更新（不會自動重開機）
-- 容器 log 上限（每服務 3 × 10MB）寫在兩個 compose 檔，隨 CD 部署生效
+- 容器 log 上限（每服務 3 × 10MB）寫在各 compose 檔，隨 CD 部署生效
 
 ## 前端（Cloudflare Workers）
 
@@ -197,15 +219,16 @@ sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數�
 瀏覽器 ──► https://devbuildsample-web.<你的子網域>.workers.dev
              ├─ /、/app.js、/style.css      → 靜態檔案（apps/web/public）
              ├─ /api/node/*                 → Worker 代轉 → https://api-staging.heitang.info/node/*
-             └─ /api/dotnet/*               → Worker 代轉 → https://api-staging.heitang.info/dotnet/*
+             ├─ /api/dotnet/*               → Worker 代轉 → https://api-staging.heitang.info/dotnet/*
+             └─ /api/php/*                  → Worker 代轉 → https://api-staging.heitang.info/php/*
 ```
 
-瀏覽器只跟同一個網域溝通，所以沒有跨網域（CORS）問題，後端也不用改。後端的 `Location` header（例如 `/node/items/1`）會被改寫成 `/api/node/items/1`。代轉目標設定在 `apps/web/wrangler.jsonc` 的 `vars`（`NODE_API`、`DOTNET_API`）。
+瀏覽器只跟同一個網域溝通，所以沒有跨網域（CORS）問題，後端也不用改。後端的 `Location` header（例如 `/node/items/1`）會被改寫成 `/api/node/items/1`。代轉目標設定在 `apps/web/wrangler.jsonc` 的 `vars`（`NODE_API`、`DOTNET_API`、`PHP_API`）。
 
 ### 本機開發
 
 ```bash
-./scripts/local-up.sh node && ./scripts/local-up.sh dotnet    # 先啟動兩個後端
+./scripts/local-up.sh node && ./scripts/local-up.sh dotnet && ./scripts/local-up.sh php    # 先啟動三個後端
 cd apps/web
 npm install
 cp .dev.vars.example .dev.vars    # 讓 Worker 代轉到本機後端
@@ -239,6 +262,7 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
 ```bash
 ./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/node
 ./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/dotnet
+./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/php
 ```
 
 ### 綁自訂網域（選用）

@@ -1,0 +1,35 @@
+name: CD (PHP)
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api-php/**
+      - deploy/docker-compose.php.yml
+      - scripts/smoke-test.sh
+      - .github/workflows/cd-php.yml
+      - .github/workflows/_build-deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 回滾用：填舊的 git SHA，只跑 deploy
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging-php
+  cancel-in-progress: false
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      image_name: api-php
+      context: ./apps/api-php
+      compose_file: deploy/docker-compose.php.yml
+      project: myapp-php
+      port: 3002
+      path_base: /php
+      image_tag: ${{ inputs.image_tag }}

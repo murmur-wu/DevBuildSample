@@ -1,6 +1,6 @@
-// 待辦清單前端：透過同網域的 /api/<backend>/ 呼叫後端（Worker 代轉），可切換 Node / .NET。
+// 待辦清單前端：透過同網域的 /api/<backend>/ 呼叫後端（Worker 代轉），可切換 Node / .NET / PHP。
 const STORAGE_KEY = 'devbuildsample.backend';
-const BACKENDS = ['node', 'dotnet'];
+const BACKENDS = ['node', 'dotnet', 'php'];
 
 const $ = (id) => document.getElementById(id);
 const els = {

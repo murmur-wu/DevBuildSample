@@ -2,7 +2,8 @@
 // 因此不會有跨網域（CORS）問題，後端也不用改。其他路徑由 wrangler.jsonc 的 assets 直接回靜態檔案。
 //   /api/node/items    → NODE_API/items    （例如 https://api-staging.heitang.info/node/items）
 //   /api/dotnet/items  → DOTNET_API/items
-const BACKENDS = { node: 'NODE_API', dotnet: 'DOTNET_API' };
+//   /api/php/items     → PHP_API/items
+const BACKENDS = { node: 'NODE_API', dotnet: 'DOTNET_API', php: 'PHP_API' };
 
 function json(status, body) {
   return Response.json(body, { status });

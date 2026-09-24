@@ -1,0 +1,7 @@
+vendor/
+tests/
+composer.*
+phpunit.xml*
+.phpunit.cache/
+*.md
+.phpunit.result.cache

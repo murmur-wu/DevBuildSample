@@ -1,13 +1,14 @@
 # Dependabot：每週檢查一次，有更新就開 PR（CI 會自動跑，合併後由 CD 部署）。
 # 基底 image 以 digest 鎖定（見各 Dockerfile 與 deploy/docker-compose*.yml），平常部署只下載程式層；
 # 基底更新一律透過這些 PR 進來，合併那次部署會比較久（要下載新的基底層）。
-# 一律不自動提議主版本升級：postgres 17→18 資料格式不相容、node 22→24 與 .NET 10→11 需要評估，要升級時手動改。
+# 一律不自動提議主版本升級：postgres 17→18 資料格式不相容、node 22→24、.NET 10→11、FrankenPHP 1→2 需要評估，要升級時手動改。
 version: 2
 updates:
   - package-ecosystem: docker
     directories:
       - /apps/api
       - /apps/api-dotnet
+      - /apps/api-php
     schedule:
       interval: weekly
       day: monday

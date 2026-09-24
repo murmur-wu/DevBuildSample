@@ -11,10 +11,11 @@
     "not_found_handling": "404-page"
   },
   "vars": {
-    // /api/node/*、/api/dotnet/* 要轉去的後端（含路徑前綴，與後端 compose 的 PATH_BASE 對應）
+    // /api/node/*、/api/dotnet/*、/api/php/* 要轉去的後端（含路徑前綴，與後端 compose 的 PATH_BASE 對應）
     // 本機開發用 .dev.vars 覆寫（見 .dev.vars.example）
     "NODE_API": "https://api-staging.heitang.info/node",
-    "DOTNET_API": "https://api-staging.heitang.info/dotnet"
+    "DOTNET_API": "https://api-staging.heitang.info/dotnet",
+    "PHP_API": "https://api-staging.heitang.info/php"
   },
   "observability": {
     "enabled": true
