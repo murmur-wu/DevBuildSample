@@ -1,0 +1,35 @@
+name: CD (Python)
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api-python/**
+      - deploy/docker-compose.python.yml
+      - scripts/smoke-test.sh
+      - .github/workflows/cd-python.yml
+      - .github/workflows/_build-deploy.yml
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 回滾用：填舊的 git SHA，只跑 deploy
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging-python
+  cancel-in-progress: false
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      image_name: api-python
+      context: ./apps/api-python
+      compose_file: deploy/docker-compose.python.yml
+      project: myapp-python
+      port: 3003
+      path_base: /py
+      image_tag: ${{ inputs.image_tag }}

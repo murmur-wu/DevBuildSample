@@ -1,0 +1,5 @@
+# 正式 image 使用的套件（版本鎖定；更新由 Dependabot 開 PR）
+fastapi==0.141.1
+uvicorn==0.53.0
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3

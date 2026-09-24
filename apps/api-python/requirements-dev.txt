@@ -1,0 +1,4 @@
+# 單元測試用（CI 在 python 官方容器中安裝）
+-r requirements.txt
+pytest==9.1.1
+httpx2==2.13.1
