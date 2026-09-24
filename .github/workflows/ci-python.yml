@@ -1,0 +1,59 @@
+name: CI (Python)
+on:
+  pull_request:
+    paths:
+      - apps/api-python/**
+      - deploy/docker-compose.python.yml
+      - deploy/docker-compose.python.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-python.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api-python/**
+      - deploy/docker-compose.python.yml
+      - deploy/docker-compose.python.local.yml
+      - scripts/local-up.sh
+      - scripts/smoke-test.sh
+      - .github/workflows/ci-python.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: pytest（在 python 官方容器中執行，與本機相同）
+        run: |
+          docker run --rm -v "$PWD/apps/api-python:/app" -w /app -e PYTHONDONTWRITEBYTECODE=1 python:3.14-alpine \
+            sh -c 'pip install -q --root-user-action=ignore -r requirements-dev.txt && python -m pytest -p no:cacheprovider'
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start api + db
+        run: ./scripts/local-up.sh python
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3003
+      - name: Smoke test（帶路徑前綴 /py）
+        run: ./scripts/smoke-test.sh http://127.0.0.1:3003/py
+      - name: 請求紀錄
+        run: |
+          logs=$(./scripts/local-up.sh python logs)
+          # 每個請求一行「方法 路徑 狀態碼 耗時」，路徑含前綴
+          grep -Eq 'POST /py/items 201 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 POST /py/items 的請求紀錄"; echo "$logs"; exit 1; }
+          grep -Eq 'GET /py/items/abc 404 [0-9]+ms$' <<<"$logs" || { echo "::error::缺少 404 的請求紀錄"; exit 1; }
+          # 成功的 /health 不記錄（healthcheck 會洗版）
+          if grep -Eq 'GET (/py)?/health 200 ' <<<"$logs"; then echo "::error::成功的 /health 不應該被記錄"; exit 1; fi
+      - name: Logs on failure
+        if: failure()
+        run: ./scripts/local-up.sh python logs
+      - name: Tear down
+        if: always()
+        run: ./scripts/local-up.sh python clean

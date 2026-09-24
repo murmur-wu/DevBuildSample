@@ -1,4 +1,4 @@
-# 共用的 build + deploy 流程，由 cd-node.yml、cd-dotnet.yml、cd-php.yml 呼叫。
+# 共用的 build + deploy 流程，由 cd-node.yml、cd-dotnet.yml、cd-php.yml、cd-python.yml 呼叫。
 # build：GitHub 雲端建置 image 推到 GHCR（tag = git SHA）；有 image_tag（回滾）時跳過。
 # deploy：在 self-hosted runner（label staging）上 pull + up，再跑 /health 與 smoke test。
 name: build-deploy
@@ -7,7 +7,7 @@ on:
   workflow_call:
     inputs:
       image_name:
-        description: GHCR 上的 image 名稱，例如 api、api-dotnet、api-php
+        description: GHCR 上的 image 名稱，例如 api、api-dotnet、api-php、api-python
         type: string
         required: true
       context:
@@ -18,7 +18,7 @@ on:
         type: string
         required: true
       project:
-        description: compose project 名稱，例如 myapp、myapp-dotnet、myapp-php
+        description: compose project 名稱，例如 myapp、myapp-dotnet、myapp-php、myapp-python
         type: string
         required: true
       port:
@@ -26,7 +26,7 @@ on:
         type: number
         required: true
       path_base:
-        description: 對外網址的路徑前綴（與 compose 的 PATH_BASE 相同），例如 /node、/dotnet、/php
+        description: 對外網址的路徑前綴（與 compose 的 PATH_BASE 相同），例如 /node、/dotnet、/php、/py
         type: string
         required: true
       image_tag:

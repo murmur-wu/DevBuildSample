@@ -3,7 +3,8 @@
 //   /api/node/items    → NODE_API/items    （例如 https://api-staging.heitang.info/node/items）
 //   /api/dotnet/items  → DOTNET_API/items
 //   /api/php/items     → PHP_API/items
-const BACKENDS = { node: 'NODE_API', dotnet: 'DOTNET_API', php: 'PHP_API' };
+//   /api/py/items      → PY_API/items
+const BACKENDS = { node: 'NODE_API', dotnet: 'DOTNET_API', php: 'PHP_API', py: 'PY_API' };
 
 function json(status, body) {
   return Response.json(body, { status });
