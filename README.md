@@ -260,7 +260,7 @@ runner 與 cloudflared 都只用對外連線，不受影響。`--no-ssh` 會連 
 **設定步驟（順序很重要，反過來做前端會暫時無法使用）：**
 
 1. **建立 service token**：Cloudflare dashboard → **Zero Trust** → **Access** → **Service credentials** → **Service Tokens** → **Create Service Token**，名稱例如 `devbuildsample-web`。建立後會顯示 **Client ID** 與 **Client Secret**（Secret 只顯示這一次）。第一次使用 Zero Trust 會要求設定團隊名稱並選擇方案（選 Free）。
-2. **把 token 設定給前端 Worker**：**Workers & Pages** → `devbuildsample-web` → **Settings** → **Variables and Secrets** → 新增兩個 **Secret** 類型的變數：`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`。Secret 在之後的 Workers Builds 部署中會保留。
+2. **把 token 設定給前端 Worker**：**Workers & Pages** → `devbuildsample-web` → **Settings** → **Runtime variables and secrets**（上方選「生產」）→ 新增兩個 **Secret** 類型的變數：`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET` → **Deploy**。注意不要加到下方 **Build** 區塊的「Build variables and secrets」，那是建置時用的，Worker 執行時讀不到。Secret 在之後的 Workers Builds 部署中會保留。
 3. **部署會帶 token 的 Worker**（合併含 `worker.js` 這項修改的 PR）。此時後端還沒被保護，多帶的 header 不影響。
 4. **建立 Access 應用程式**：**Zero Trust** → **Access** → **Applications** → **Add an application** → **Self-hosted**，Domain 填 `<後端網址>`（路徑留空，保護整個 hostname），加上兩條 policy：
    - Action **Service Auth**，Include：**Service Token** = `devbuildsample-web`（給前端 Worker 用）

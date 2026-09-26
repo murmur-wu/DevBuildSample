@@ -136,6 +136,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **前端不直接呼叫 api-staging**：跨網域會被 CORS 擋，後端也沒有處理 `OPTIONS` 預檢。一律經 Worker 的 `/api/<backend>/` 代轉；新增後端時在 `worker.js` 的 `BACKENDS` 與 `wrangler.jsonc` 的 `vars` 各加一筆。
 - **前端不要再加 GitHub Actions 的部署 workflow**：部署已由 Workers Builds 負責，兩邊都部署會重複。Worker 名稱必須與 `wrangler.jsonc` 的 `name`（`devbuildsample-web`）一致，改名要同時改 dashboard。
 - **請求紀錄格式各版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要各版一起改並更新各 `ci-<key>.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
+- **Worker secrets 要加在 Runtime variables and secrets**：dashboard 的 Settings 有兩處可以加變數，Build 區塊的「Build variables and secrets」只在建置時有效，Worker 執行時讀不到。曾因加錯位置，log 顯示 `Access denied 403: id=missing secret=missing`，前端全部 502。被擋時 `worker.js` 的 log 會記錄 token 是否設定與長度（不記值），可用來判斷。
 - **Access 的上線順序**：先建 service token → 設定 Worker secrets → 部署會帶 token 的 Worker → 最後才建立 Access 應用程式。反過來做，前端在 Worker 更新前會全部回 502（`backend access denied`）。
 - **Worker 不能把 Access 的轉址交給瀏覽器**：沒帶或帶錯 token 時，Access 會 302 到 `*.cloudflareaccess.com` 或回 401/403；瀏覽器跟著跨網域轉址只會得到看不懂的 CORS 錯誤，所以 `worker.js` 改回 502 並記錄 log。各版後端本身不會回 401/403。
 - **不提供 Swagger UI**：已移除 `public/docs/`，`openapi.yaml` 移出 `public/`（放在 `public/` 裡就會被當成靜態檔公開）；`ci-web.yml` 會檢查 `/docs/`、`/openapi.yaml` 回 404。
