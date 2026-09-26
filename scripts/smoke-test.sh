@@ -3,17 +3,25 @@
 # 只會刪除自己建立的資料，可以安全地對 staging 跑。
 # 用法：scripts/smoke-test.sh [BASE_URL]   預設 http://127.0.0.1:3000
 #   BASE_URL 可以帶路徑前綴，例如 https://api-staging.heitang.info/dotnet
+#   api-staging 受 Cloudflare Access 保護：直接打時要設環境變數 CF_ACCESS_CLIENT_ID、CF_ACCESS_CLIENT_SECRET
+#   （service token），經前端 Worker 代轉（<前端網址>/api/<版本>）或打本機則不用
 # 依賴：curl、python3（Ubuntu 預設都有）
 set -uo pipefail
 BASE="${1:-${BASE_URL:-http://127.0.0.1:3000}}"
 BASE="${BASE%/}"
+
+# 每個 curl 都會帶上的參數（有設定 Access service token 時加上對應 header）
+CURL_AUTH=()
+if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+  CURL_AUTH=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+fi
 
 pass=0; fail=0
 STATUS=""; BODY=""; HEADERS=""
 created_id=""
 
 cleanup() {
-  [[ -n "$created_id" ]] && curl -s -o /dev/null -X DELETE "$BASE/items/$created_id" || true
+  [[ -n "$created_id" ]] && curl -s "${CURL_AUTH[@]}" -o /dev/null -X DELETE "$BASE/items/$created_id" || true
 }
 trap cleanup EXIT
 
@@ -21,7 +29,7 @@ trap cleanup EXIT
 req() {
   local method=$1 path=$2 data=${3-} out
   local hdr; hdr=$(mktemp)
-  local args=(-s -D "$hdr" -w $'\n%{http_code}' -X "$method" "$BASE$path")
+  local args=(-s "${CURL_AUTH[@]}" -D "$hdr" -w $'\n%{http_code}' -X "$method" "$BASE$path")
   [[ -n "$data" ]] && args+=(-H 'content-type: application/json' --data "$data")
   out=$(curl "${args[@]}") || { STATUS=000; BODY="curl failed (API 沒有在 $BASE 運行？)"; rm -f "$hdr"; return; }
   STATUS=${out##*$'\n'}

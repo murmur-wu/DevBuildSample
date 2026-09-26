@@ -1,8 +1,14 @@
 # DevBuildSample
 
+## Demo
+
+前端（待辦清單，可切換六個後端）：https://devbuildsample-web.z-file.workers.dev/
+
+> 這是公開的測試（staging）環境：任何人都能新增、修改、刪除資料，資料也可能隨時被清空。請勿輸入個人資料或任何敏感內容。
+
 最小範例後端，同一套 API 有六種實作，各自獨立測試與部署（每版各有一個 PostgreSQL 17 容器與 volume）：
 
-| 版本 | 原始碼 | 本機 port | 對外網址（`https://api-staging.heitang.info` 之後） | CI / CD |
+| 版本 | 原始碼 | 本機 port | 對外網址（`https://<後端網址>` 之後） | CI / CD |
 |---|---|---|---|---|
 | Node 22 | `apps/api/` | 3000 | `/node/...` | `ci-node.yml` / `cd-node.yml` |
 | .NET 10（ASP.NET Core Minimal API） | `apps/api-dotnet/` | 3001 | `/dotnet/...` | `ci-dotnet.yml`（含 `dotnet test`）/ `cd-dotnet.yml` |
@@ -10,6 +16,8 @@
 | Python 3.14（FastAPI） | `apps/api-python/` | 3003 | `/py/...` | `ci-python.yml`（含 pytest）/ `cd-python.yml` |
 | Go 1.27（標準函式庫 net/http） | `apps/api-go/` | 3004 | `/go/...` | `ci-go.yml`（含 go test）/ `cd-go.yml` |
 | Java 25（Spring Boot 4） | `apps/api-java/` | 3005 | `/java/...` | `ci-java.yml`（含 JUnit）/ `cd-java.yml` |
+
+> 本文件中的 `<後端網址>` 是你自己部署後端用的網域名稱（例如 `api.example.com`，不含 `https://`），由 Cloudflare Tunnel 對外提供（見「對外服務：Cloudflare Tunnel」）。前端 Worker 代轉的目標設定在 `apps/web/wrangler.jsonc` 的 `vars`，也要改成你的後端網址。
 
 各版 API 完全相同，共用 `scripts/smoke-test.sh` 驗收。對外共用同一個網址，用路徑前綴分流（見「對外服務」）。
 
@@ -25,7 +33,7 @@ apps/api-python/                       Python 版：app/main.py（路由）、ap
 apps/api-go/                           Go 版：main.go（路由）、item.go（驗證）、store.go（SQL）、*_test.go、Dockerfile
 apps/api-java/                         Java 版：src/main/java/devbuildsample/api/、src/test/（JUnit）、pom.xml、Dockerfile
 apps/web/                              前端：public/（靜態頁面）、src/worker.js（API 代轉）、wrangler.jsonc
-apps/web/public/openapi.yaml           API 規格（OpenAPI 3.1，各版共同的契約），Swagger UI 在 /docs/
+apps/web/openapi.yaml                  API 規格（OpenAPI 3.1，各版共同的契約；只放在 repo 裡，不對外提供）
 deploy/docker-compose.yml              Node 版部署用（compose project：myapp）
 deploy/docker-compose.dotnet.yml       .NET 版部署用（compose project：myapp-dotnet）
 deploy/docker-compose.php.yml          PHP 版部署用（compose project：myapp-php）
@@ -86,7 +94,7 @@ git clone https://github.com/murmur-wu/DevBuildSample.git && cd DevBuildSample
 ./scripts/smoke-test.sh http://127.0.0.1:3002    # PHP 版
 ./scripts/smoke-test.sh http://127.0.0.1:3003    # Python 版（Go :3004、Java :3005）
 ./scripts/smoke-test.sh http://127.0.0.1:3001/dotnet    # 帶路徑前綴（模擬經 tunnel 的請求）
-./scripts/smoke-test.sh https://api-staging.heitang.info/dotnet   # 也可以打其他環境
+./scripts/smoke-test.sh https://<後端網址>/dotnet   # 也可以打其他環境
 
 # 4. 其他（app 參數：node、dotnet、php、python、go 或 java）
 ./scripts/local-up.sh dotnet logs    # 看 log
@@ -133,8 +141,7 @@ docker run --rm -v "$PWD/apps/api-java:/src" -w /src maven:3-eclipse-temurin-25-
 
 ## API
 
-完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。
-互動式文件（Swagger UI）：前端網址的 `/docs/`，例如 `https://devbuildsample-web.<子網域>.workers.dev/docs/`。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+完整規格：[`apps/web/openapi.yaml`](apps/web/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。CI 以 `npm run lint:openapi` 檢查；網站不提供 Swagger UI，後端也不直接對外公開（見「保護後端」）。
 
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
@@ -208,12 +215,12 @@ sudo docker exec myapp-python-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 
 ```bash
 ./scripts/vm/setup-tunnel.sh \
-  api-staging.heitang.info/node=http://127.0.0.1:3000 \
-  api-staging.heitang.info/dotnet=http://127.0.0.1:3001 \
-  api-staging.heitang.info/php=http://127.0.0.1:3002 \
-  api-staging.heitang.info/py=http://127.0.0.1:3003 \
-  api-staging.heitang.info/go=http://127.0.0.1:3004 \
-  api-staging.heitang.info/java=http://127.0.0.1:3005
+  <後端網址>/node=http://127.0.0.1:3000 \
+  <後端網址>/dotnet=http://127.0.0.1:3001 \
+  <後端網址>/php=http://127.0.0.1:3002 \
+  <後端網址>/py=http://127.0.0.1:3003 \
+  <後端網址>/go=http://127.0.0.1:3004 \
+  <後端網址>/java=http://127.0.0.1:3005
 ```
 
 執行前先 `git checkout main && git pull`（腳本是在主機上的 clone 執行，不會隨 CD 更新）。新增後端時要**先**等它的 CD 部署成功，**再**更新 tunnel，否則新路徑會暫時 404/502。
@@ -221,22 +228,22 @@ sudo docker exec myapp-python-db-1 psql -U postgres -d app -c 'SELECT * FROM ite
 同一個網址用路徑前綴分流：
 
 ```
-https://api-staging.heitang.info/node/items    → Node（127.0.0.1:3000）
-https://api-staging.heitang.info/dotnet/items  → .NET（127.0.0.1:3001）
-https://api-staging.heitang.info/php/items     → PHP（127.0.0.1:3002）
-https://api-staging.heitang.info/py/items      → Python（127.0.0.1:3003）
-https://api-staging.heitang.info/go/items      → Go（127.0.0.1:3004）
-https://api-staging.heitang.info/java/items    → Java（127.0.0.1:3005）
-https://api-staging.heitang.info/其他路徑       → 404
+https://<後端網址>/node/items    → Node（127.0.0.1:3000）
+https://<後端網址>/dotnet/items  → .NET（127.0.0.1:3001）
+https://<後端網址>/php/items     → PHP（127.0.0.1:3002）
+https://<後端網址>/py/items      → Python（127.0.0.1:3003）
+https://<後端網址>/go/items      → Go（127.0.0.1:3004）
+https://<後端網址>/java/items    → Java（127.0.0.1:3005）
+https://<後端網址>/其他路徑       → 404
 ```
 
 - **cloudflared 轉送時不會去掉前綴**：`/dotnet/items` 送到 .NET 時路徑仍是 `/dotnet/items`。所以每個服務都用環境變數 `PATH_BASE`（設在 compose 檔）自己去掉前綴；沒帶前綴的請求（本機、healthcheck）照常處理。
 - 每次都要列出**全部**路由：config 會依參數整份重寫，沒列到的路由會被移除。
 - 參數格式 `HOSTNAME[/PATH][=ORIGIN]`：`/PATH` 比對 `/PATH` 與 `/PATH/...`（不會誤中 `/PATHx`）；`=ORIGIN` 省略時為 `http://127.0.0.1:3000`；tunnel 名稱預設 `myapp-staging`（環境變數 `TUNNEL_NAME` 可覆寫）。
-- 前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。
-- 若改用不同子網域分流（例如 `a.heitang.info=...`），子網域只能一層；`api.dotnet.heitang.info` 這種兩層的不在 Cloudflare 免費 SSL 憑證範圍內。
+- 前提：後端網址所屬的網域（例如 `example.com`）已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。登入授權時要選這個網域。
+- 若改用不同子網域分流（例如 `a.example.com=...`），子網域只能一層；`api.dotnet.example.com` 這種兩層的不在 Cloudflare 免費 SSL 憑證範圍內。
 
-腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
+腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。後端受 Cloudflare Access 保護時，驗證會顯示「已連上，但受 Cloudflare Access 保護」；要驗證回應內容，執行前設定 `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`。
 
 確認 tunnel 正常後再開防火牆：
 
@@ -245,6 +252,31 @@ sudo ./scripts/vm/setup-firewall.sh            # 拒絕所有進入連線，但�
 ```
 
 runner 與 cloudflared 都只用對外連線，不受影響。`--no-ssh` 會連 SSH 都關掉，只有在確定有其他方式登入主機時才用（腳本偵測到有 SSH 連線會拒絕執行）。
+
+## 保護後端：Cloudflare Access
+
+後端（`<後端網址>`）不對外公開：以 Cloudflare Access 保護整個 hostname，只接受帶 **service token** 的請求。前端 Worker 代轉時會帶上 token，所以前端照常可用；直接打後端網址會被 Cloudflare 擋下（轉到登入頁或 403）。CD 的驗證與 smoke test 打的是 buildserver 本機的 `127.0.0.1`，不經過 Access，不受影響。
+
+**設定步驟（順序很重要，反過來做前端會暫時無法使用）：**
+
+1. **建立 service token**：Cloudflare dashboard → **Zero Trust** → **Access** → **Service credentials** → **Service Tokens** → **Create Service Token**，名稱例如 `devbuildsample-web`。建立後會顯示 **Client ID** 與 **Client Secret**（Secret 只顯示這一次）。第一次使用 Zero Trust 會要求設定團隊名稱並選擇方案（選 Free）。
+2. **把 token 設定給前端 Worker**：**Workers & Pages** → `devbuildsample-web` → **Settings** → **Variables and Secrets** → 新增兩個 **Secret** 類型的變數：`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`。Secret 在之後的 Workers Builds 部署中會保留。
+3. **部署會帶 token 的 Worker**（合併含 `worker.js` 這項修改的 PR）。此時後端還沒被保護，多帶的 header 不影響。
+4. **建立 Access 應用程式**：**Zero Trust** → **Access** → **Applications** → **Add an application** → **Self-hosted**，Domain 填 `<後端網址>`（路徑留空，保護整個 hostname），加上兩條 policy：
+   - Action **Service Auth**，Include：**Service Token** = `devbuildsample-web`（給前端 Worker 用）
+   - Action **Allow**，Include：**Emails** = 你自己的 email（想用瀏覽器直接看後端時，以 email 驗證碼登入）
+5. **驗證**：前端各後端都顯示「已連線」；`curl -i https://<後端網址>/node/health` 會被擋（302 轉到 `*.cloudflareaccess.com` 或 403）。
+
+直接對 staging 跑 smoke test 時要帶 token（不要把 token 存進 git 或 shell history 以外的地方）：
+
+```bash
+CF_ACCESS_CLIENT_ID=<Client ID> CF_ACCESS_CLIENT_SECRET=<Client Secret> \
+  ./scripts/smoke-test.sh https://<後端網址>/go
+```
+
+token 到期或外洩時：在 Service Tokens 重新產生（Refresh）或建立新的，更新 Worker 的兩個 secret，再把 Access policy 指向新的 token。
+
+注意：前端 Worker 的 `/api/<版本>/` 代轉本身仍是公開的（前端頁面需要它），任何人都能經由它讀寫資料。要進一步防止濫用，可在 Cloudflare 對前端網址設 Rate limiting rule。
 
 ## 維運
 
@@ -260,14 +292,14 @@ sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數�
 ## 前端（Cloudflare Workers）
 
 ```
-瀏覽器 ──► https://devbuildsample-web.<你的子網域>.workers.dev
+瀏覽器 ──► https://devbuildsample-web.z-file.workers.dev
              ├─ /、/app.js、/style.css      → 靜態檔案（apps/web/public）
-             ├─ /api/node/*                 → Worker 代轉 → https://api-staging.heitang.info/node/*
-             ├─ /api/dotnet/*               → Worker 代轉 → https://api-staging.heitang.info/dotnet/*
-             ├─ /api/php/*                  → Worker 代轉 → https://api-staging.heitang.info/php/*
-             ├─ /api/py/*                   → Worker 代轉 → https://api-staging.heitang.info/py/*
-             ├─ /api/go/*                   → Worker 代轉 → https://api-staging.heitang.info/go/*
-             └─ /api/java/*                 → Worker 代轉 → https://api-staging.heitang.info/java/*
+             ├─ /api/node/*                 → Worker 代轉 → https://<後端網址>/node/*
+             ├─ /api/dotnet/*               → Worker 代轉 → https://<後端網址>/dotnet/*
+             ├─ /api/php/*                  → Worker 代轉 → https://<後端網址>/php/*
+             ├─ /api/py/*                   → Worker 代轉 → https://<後端網址>/py/*
+             ├─ /api/go/*                   → Worker 代轉 → https://<後端網址>/go/*
+             └─ /api/java/*                 → Worker 代轉 → https://<後端網址>/java/*
 ```
 
 瀏覽器只跟同一個網域溝通，所以沒有跨網域（CORS）問題，後端也不用改。後端的 `Location` header（例如 `/node/items/1`）會被改寫成 `/api/node/items/1`。代轉目標設定在 `apps/web/wrangler.jsonc` 的 `vars`（`NODE_API`、`DOTNET_API`、`PHP_API`、`PY_API`、`GO_API`、`JAVA_API`）。
@@ -283,8 +315,6 @@ npm run dev                        # http://127.0.0.1:8787
 ../../scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet   # 經代轉跑 smoke test
 npm run lint:openapi               # 檢查 OpenAPI 規格
 ```
-
-Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist，固定版本並以 SRI 驗證）。
 
 ### 部署：Cloudflare Workers Builds（Git 整合，只設定一次）
 
@@ -302,17 +332,17 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
    | Deploy command | `npx wrangler deploy` |
    | Build watch paths（Settings → Builds） | Include：`apps/web/*`（只有前端變動才部署） |
 
-3. 第一次使用 Workers 時會要求設定 workers.dev 子網域（例如 `murmur`），網址會是 `https://devbuildsample-web.murmur.workers.dev`。
+3. 第一次使用 Workers 時會要求設定 workers.dev 子網域（這個專案用的是 `z-file`），網址為 `https://devbuildsample-web.z-file.workers.dev`。
 
 之後只要改 `apps/web/` 並合併到 `main`，Cloudflare 就會自動部署；GitHub 的 commit 旁會出現 Cloudflare 的 check run。部署後可以手動跑一次完整驗證：
 
 ```bash
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/node
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/dotnet
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/php
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/py
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/go
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/java
+./scripts/smoke-test.sh <前端網址>/api/node
+./scripts/smoke-test.sh <前端網址>/api/dotnet
+./scripts/smoke-test.sh <前端網址>/api/php
+./scripts/smoke-test.sh <前端網址>/api/py
+./scripts/smoke-test.sh <前端網址>/api/go
+./scripts/smoke-test.sh <前端網址>/api/java
 ```
 
 ### 綁自訂網域（選用）
@@ -320,8 +350,11 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
 在 `apps/web/wrangler.jsonc` 加上：
 
 ```jsonc
-"routes": [{ "pattern": "app-staging.heitang.info", "custom_domain": true }]
+"routes": [{ "pattern": "<前端自訂網域>", "custom_domain": true }]
 ```
 
 合併後 Workers Builds 部署時會自動建立 DNS 與憑證。子網域一樣只能一層。
 
+## 授權
+
+本專案以 [GNU General Public License v3.0 或更新版本](LICENSE)（GPL-3.0-or-later）釋出。可以自由使用、修改與散布；散布修改後的版本時，須以相同授權公開原始碼。

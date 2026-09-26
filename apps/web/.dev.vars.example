@@ -5,3 +5,7 @@ PHP_API=http://127.0.0.1:3002/php
 PY_API=http://127.0.0.1:3003/py
 GO_API=http://127.0.0.1:3004/go
 JAVA_API=http://127.0.0.1:3005/java
+# 本機後端沒有 Cloudflare Access，不用設 CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET。
+# 要在本機測試代轉到 staging（受 Access 保護）時才填，值向專案負責人索取，不要 commit。
+# CF_ACCESS_CLIENT_ID=
+# CF_ACCESS_CLIENT_SECRET=

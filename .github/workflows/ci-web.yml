@@ -48,8 +48,9 @@ jobs:
       - name: 靜態頁面
         run: |
           curl -fsS http://127.0.0.1:8787/ | grep -q '<title>DevBuildSample'
-          curl -fsS http://127.0.0.1:8787/docs/ | grep -q 'swagger-ui-bundle.js'
-          curl -fsS http://127.0.0.1:8787/openapi.yaml | grep -q '^openapi: 3.1'
+          # Swagger UI 與 OpenAPI 規格不對外提供
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/docs/)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/openapi.yaml)" = 404
           curl -fsS -o /dev/null http://127.0.0.1:8787/app.js
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/unknown/health)" = 404
       - name: Smoke test（經 Worker 代轉到 Node）

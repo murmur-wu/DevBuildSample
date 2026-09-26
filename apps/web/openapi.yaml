@@ -11,7 +11,7 @@ info:
     - `created_at` / `updated_at` 的精度：Node 為毫秒，其他各版為微秒（都是 ISO 8601）。
     - `GET /` 的 `name`：Node 為 `api`、.NET 為 `api-dotnet`、PHP 為 `api-php`、Python 為 `api-python`、Go 為 `api-go`、Java 為 `api-java`。
 
-    本頁的「Try it out」會經過前端 Worker 的 `/api/<backend>/` 代轉到 staging 後端，**會實際寫入資料庫**。
+    servers 是前端 Worker 的代轉路徑（`/api/<backend>/`）。本檔只放在 repo 裡當作契約與 CI 檢查，不透過網站公開。
 servers:
   - url: /api/node
     description: Node 版（經前端 Worker 代轉）

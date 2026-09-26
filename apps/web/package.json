@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "lint:openapi": "redocly lint public/openapi.yaml"
+    "lint:openapi": "redocly lint openapi.yaml"
   },
   "devDependencies": {
     "@redocly/cli": "^2.54.2",

@@ -13,6 +13,8 @@
   "vars": {
     // /api/<backend>/* 要轉去的後端（含路徑前綴，與後端 compose 的 PATH_BASE 對應）
     // 本機開發用 .dev.vars 覆寫（見 .dev.vars.example）
+    // 另有 secrets（不寫在這裡、不進 git，設定在 dashboard → Worker → Settings → Variables and Secrets）：
+    //   CF_ACCESS_CLIENT_ID、CF_ACCESS_CLIENT_SECRET：Cloudflare Access 的 service token，代轉到後端時帶上
     "NODE_API": "https://api-staging.heitang.info/node",
     "DOTNET_API": "https://api-staging.heitang.info/dotnet",
     "PHP_API": "https://api-staging.heitang.info/php",
