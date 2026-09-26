@@ -1,5 +1,15 @@
 # DevBuildSample
 
+## Demo
+
+| | 網址 |
+|---|---|
+| 前端（待辦清單，可切換六個後端） | https://devbuildsample-web.z-file.workers.dev/ |
+| API 文件（Swagger UI，可直接試打各後端） | https://devbuildsample-web.z-file.workers.dev/docs/ |
+| 各後端的健康檢查 | [Node](https://api-staging.heitang.info/node/health)、[.NET](https://api-staging.heitang.info/dotnet/health)、[PHP](https://api-staging.heitang.info/php/health)、[Python](https://api-staging.heitang.info/py/health)、[Go](https://api-staging.heitang.info/go/health)、[Java](https://api-staging.heitang.info/java/health) |
+
+> 這是公開的測試（staging）環境：任何人都能新增、修改、刪除資料，資料也可能隨時被清空。請勿輸入個人資料或任何敏感內容。
+
 最小範例後端，同一套 API 有六種實作，各自獨立測試與部署（每版各有一個 PostgreSQL 17 容器與 volume）：
 
 | 版本 | 原始碼 | 本機 port | 對外網址（`https://api-staging.heitang.info` 之後） | CI / CD |
@@ -134,7 +144,7 @@ docker run --rm -v "$PWD/apps/api-java:/src" -w /src maven:3-eclipse-temurin-25-
 ## API
 
 完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。
-互動式文件（Swagger UI）：前端網址的 `/docs/`，例如 `https://devbuildsample-web.<子網域>.workers.dev/docs/`。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+互動式文件（Swagger UI）：前端網址的 `/docs/`，也就是 https://devbuildsample-web.z-file.workers.dev/docs/。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
 
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
@@ -260,7 +270,7 @@ sudo ./scripts/vm/setup-maintenance.sh          # swap 預設 2G，可傳參數�
 ## 前端（Cloudflare Workers）
 
 ```
-瀏覽器 ──► https://devbuildsample-web.<你的子網域>.workers.dev
+瀏覽器 ──► https://devbuildsample-web.z-file.workers.dev
              ├─ /、/app.js、/style.css      → 靜態檔案（apps/web/public）
              ├─ /api/node/*                 → Worker 代轉 → https://api-staging.heitang.info/node/*
              ├─ /api/dotnet/*               → Worker 代轉 → https://api-staging.heitang.info/dotnet/*
@@ -302,17 +312,17 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
    | Deploy command | `npx wrangler deploy` |
    | Build watch paths（Settings → Builds） | Include：`apps/web/*`（只有前端變動才部署） |
 
-3. 第一次使用 Workers 時會要求設定 workers.dev 子網域（例如 `murmur`），網址會是 `https://devbuildsample-web.murmur.workers.dev`。
+3. 第一次使用 Workers 時會要求設定 workers.dev 子網域（這個專案用的是 `z-file`），網址為 `https://devbuildsample-web.z-file.workers.dev`。
 
 之後只要改 `apps/web/` 並合併到 `main`，Cloudflare 就會自動部署；GitHub 的 commit 旁會出現 Cloudflare 的 check run。部署後可以手動跑一次完整驗證：
 
 ```bash
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/node
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/dotnet
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/php
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/py
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/go
-./scripts/smoke-test.sh https://devbuildsample-web.<子網域>.workers.dev/api/java
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/node
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/dotnet
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/php
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/py
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/go
+./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/java
 ```
 
 ### 綁自訂網域（選用）
@@ -325,3 +335,6 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
 
 合併後 Workers Builds 部署時會自動建立 DNS 與憑證。子網域一樣只能一層。
 
+## 授權
+
+本專案以 [GNU General Public License v3.0 或更新版本](LICENSE)（GPL-3.0-or-later）釋出。可以自由使用、修改與散布；散布修改後的版本時，須以相同授權公開原始碼。

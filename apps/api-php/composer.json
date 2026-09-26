@@ -2,7 +2,7 @@
     "name": "devbuildsample/api-php",
     "description": "DevBuildSample 的 PHP 版 API（FrankenPHP）；composer 只用於單元測試，正式 image 沒有外部套件",
     "type": "project",
-    "license": "proprietary",
+    "license": "GPL-3.0-or-later",
     "require": {
         "php": ">=8.4",
         "ext-json": "*",
