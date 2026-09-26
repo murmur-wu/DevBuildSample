@@ -2,11 +2,7 @@
 
 ## Demo
 
-| | 網址 |
-|---|---|
-| 前端（待辦清單，可切換六個後端） | https://devbuildsample-web.z-file.workers.dev/ |
-| API 文件（Swagger UI，可直接試打各後端） | https://devbuildsample-web.z-file.workers.dev/docs/ |
-| 各後端的健康檢查 | [Node](https://api-staging.heitang.info/node/health)、[.NET](https://api-staging.heitang.info/dotnet/health)、[PHP](https://api-staging.heitang.info/php/health)、[Python](https://api-staging.heitang.info/py/health)、[Go](https://api-staging.heitang.info/go/health)、[Java](https://api-staging.heitang.info/java/health) |
+前端（待辦清單，可切換六個後端）：https://devbuildsample-web.z-file.workers.dev/
 
 > 這是公開的測試（staging）環境：任何人都能新增、修改、刪除資料，資料也可能隨時被清空。請勿輸入個人資料或任何敏感內容。
 
@@ -144,7 +140,7 @@ docker run --rm -v "$PWD/apps/api-java:/src" -w /src maven:3-eclipse-temurin-25-
 ## API
 
 完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。
-互動式文件（Swagger UI）：前端網址的 `/docs/`，也就是 https://devbuildsample-web.z-file.workers.dev/docs/。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+互動式文件（Swagger UI）：前端網址的 `/docs/`。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
 
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
@@ -317,12 +313,12 @@ Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist
 之後只要改 `apps/web/` 並合併到 `main`，Cloudflare 就會自動部署；GitHub 的 commit 旁會出現 Cloudflare 的 check run。部署後可以手動跑一次完整驗證：
 
 ```bash
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/node
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/dotnet
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/php
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/py
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/go
-./scripts/smoke-test.sh https://devbuildsample-web.z-file.workers.dev/api/java
+./scripts/smoke-test.sh <前端網址>/api/node
+./scripts/smoke-test.sh <前端網址>/api/dotnet
+./scripts/smoke-test.sh <前端網址>/api/php
+./scripts/smoke-test.sh <前端網址>/api/py
+./scripts/smoke-test.sh <前端網址>/api/go
+./scripts/smoke-test.sh <前端網址>/api/java
 ```
 
 ### 綁自訂網域（選用）
