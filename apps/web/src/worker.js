@@ -59,7 +59,10 @@ export default {
       return json(502, { error: 'backend unreachable' });
     }
     if (isAccessDenied(upstream)) {
-      console.error(`proxy to ${target} denied by Cloudflare Access (status ${upstream.status}); check CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET`);
+      // 狀態碼放最前面（dashboard 的 log 列表會截斷長訊息）；只記錄 token 是否設定與長度，不記錄值
+      const id = env.CF_ACCESS_CLIENT_ID ?? '';
+      const secret = env.CF_ACCESS_CLIENT_SECRET ?? '';
+      console.error(`Access denied ${upstream.status}: id=${id ? `set(len ${id.length}, ends ${id.slice(-10)})` : 'missing'} secret=${secret ? `set(len ${secret.length})` : 'missing'} target=${target}`);
       return json(502, { error: 'backend access denied' });
     }
 
