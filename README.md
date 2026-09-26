@@ -31,7 +31,7 @@ apps/api-python/                       Python 版：app/main.py（路由）、ap
 apps/api-go/                           Go 版：main.go（路由）、item.go（驗證）、store.go（SQL）、*_test.go、Dockerfile
 apps/api-java/                         Java 版：src/main/java/devbuildsample/api/、src/test/（JUnit）、pom.xml、Dockerfile
 apps/web/                              前端：public/（靜態頁面）、src/worker.js（API 代轉）、wrangler.jsonc
-apps/web/public/openapi.yaml           API 規格（OpenAPI 3.1，各版共同的契約），Swagger UI 在 /docs/
+apps/web/openapi.yaml                  API 規格（OpenAPI 3.1，各版共同的契約；只放在 repo 裡，不對外提供）
 deploy/docker-compose.yml              Node 版部署用（compose project：myapp）
 deploy/docker-compose.dotnet.yml       .NET 版部署用（compose project：myapp-dotnet）
 deploy/docker-compose.php.yml          PHP 版部署用（compose project：myapp-php）
@@ -139,8 +139,7 @@ docker run --rm -v "$PWD/apps/api-java:/src" -w /src maven:3-eclipse-temurin-25-
 
 ## API
 
-完整規格：[`apps/web/public/openapi.yaml`](apps/web/public/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。
-互動式文件（Swagger UI）：前端網址的 `/docs/`。上方 **Servers** 可切換後端，「Try it out」會經前端 Worker 代轉到 staging 後端，**會實際寫入資料庫**。
+完整規格：[`apps/web/openapi.yaml`](apps/web/openapi.yaml)（OpenAPI 3.1，各版共同的契約）。CI 以 `npm run lint:openapi` 檢查；網站不提供 Swagger UI，後端也不直接對外公開（見「保護後端」）。
 
 | Method | Path | 說明 | 成功 | 錯誤 |
 |---|---|---|---|---|
@@ -242,7 +241,7 @@ https://api-staging.heitang.info/其他路徑       → 404
 - 前提：`heitang.info` 已在你的 Cloudflare 帳號中；子網域不用先建，腳本會自動建立 CNAME。登入授權時要選 `heitang.info`。
 - 若改用不同子網域分流（例如 `a.heitang.info=...`），子網域只能一層；`api.dotnet.heitang.info` 這種兩層的不在 Cloudflare 免費 SSL 憑證範圍內。
 
-腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。
+腳本會：安裝 cloudflared → `tunnel login`（印出網址，用瀏覽器授權網域）→ 建立 tunnel → 把憑證複製到 `/etc/cloudflared/`（root、600）→ 寫入 `/etc/cloudflared/config.yml` → 建 DNS CNAME → 安裝 systemd 服務 → 驗證 `https://<hostname>/health`。可重複執行。後端受 Cloudflare Access 保護時，驗證會顯示「已連上，但受 Cloudflare Access 保護」；要驗證回應內容，執行前設定 `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`。
 
 確認 tunnel 正常後再開防火牆：
 
@@ -251,6 +250,31 @@ sudo ./scripts/vm/setup-firewall.sh            # 拒絕所有進入連線，但�
 ```
 
 runner 與 cloudflared 都只用對外連線，不受影響。`--no-ssh` 會連 SSH 都關掉，只有在確定有其他方式登入主機時才用（腳本偵測到有 SSH 連線會拒絕執行）。
+
+## 保護後端：Cloudflare Access
+
+後端（`api-staging.heitang.info`）不對外公開：以 Cloudflare Access 保護整個 hostname，只接受帶 **service token** 的請求。前端 Worker 代轉時會帶上 token，所以前端照常可用；直接打後端網址會被 Cloudflare 擋下（轉到登入頁或 403）。CD 的驗證與 smoke test 打的是 buildserver 本機的 `127.0.0.1`，不經過 Access，不受影響。
+
+**設定步驟（順序很重要，反過來做前端會暫時無法使用）：**
+
+1. **建立 service token**：Cloudflare dashboard → **Zero Trust** → **Access** → **Service credentials** → **Service Tokens** → **Create Service Token**，名稱例如 `devbuildsample-web`。建立後會顯示 **Client ID** 與 **Client Secret**（Secret 只顯示這一次）。第一次使用 Zero Trust 會要求設定團隊名稱並選擇方案（選 Free）。
+2. **把 token 設定給前端 Worker**：**Workers & Pages** → `devbuildsample-web` → **Settings** → **Variables and Secrets** → 新增兩個 **Secret** 類型的變數：`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`。Secret 在之後的 Workers Builds 部署中會保留。
+3. **部署會帶 token 的 Worker**（合併含 `worker.js` 這項修改的 PR）。此時後端還沒被保護，多帶的 header 不影響。
+4. **建立 Access 應用程式**：**Zero Trust** → **Access** → **Applications** → **Add an application** → **Self-hosted**，Domain 填 `api-staging.heitang.info`（路徑留空，保護整個 hostname），加上兩條 policy：
+   - Action **Service Auth**，Include：**Service Token** = `devbuildsample-web`（給前端 Worker 用）
+   - Action **Allow**，Include：**Emails** = 你自己的 email（想用瀏覽器直接看後端時，以 email 驗證碼登入）
+5. **驗證**：前端各後端都顯示「已連線」；`curl -i https://api-staging.heitang.info/node/health` 會被擋（302 轉到 `*.cloudflareaccess.com` 或 403）。
+
+直接對 staging 跑 smoke test 時要帶 token（不要把 token 存進 git 或 shell history 以外的地方）：
+
+```bash
+CF_ACCESS_CLIENT_ID=<Client ID> CF_ACCESS_CLIENT_SECRET=<Client Secret> \
+  ./scripts/smoke-test.sh https://api-staging.heitang.info/go
+```
+
+token 到期或外洩時：在 Service Tokens 重新產生（Refresh）或建立新的，更新 Worker 的兩個 secret，再把 Access policy 指向新的 token。
+
+注意：前端 Worker 的 `/api/<版本>/` 代轉本身仍是公開的（前端頁面需要它），任何人都能經由它讀寫資料。要進一步防止濫用，可在 Cloudflare 對前端網址設 Rate limiting rule。
 
 ## 維運
 
@@ -289,8 +313,6 @@ npm run dev                        # http://127.0.0.1:8787
 ../../scripts/smoke-test.sh http://127.0.0.1:8787/api/dotnet   # 經代轉跑 smoke test
 npm run lint:openapi               # 檢查 OpenAPI 規格
 ```
-
-Swagger UI 在 http://127.0.0.1:8787/docs/（由 jsDelivr 載入 swagger-ui-dist，固定版本並以 SRI 驗證）。
 
 ### 部署：Cloudflare Workers Builds（Git 整合，只設定一次）
 

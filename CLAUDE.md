@@ -7,7 +7,7 @@
 
 ## 專案概觀
 
-最小範例後端，同一套 API 有六種實作，各自獨立測試、獨立部署，搭配 pull-based CD。架構決策見 `docs/adr/`（0001 部署方式、0002/0004/0005/0006 各版後端、0003 前端、0007 改用 Docker Hub）。
+最小範例後端，同一套 API 有六種實作，各自獨立測試、獨立部署，搭配 pull-based CD。架構決策見 `docs/adr/`（0001 部署方式、0002/0004/0005/0006 各版後端、0003 前端、0007 改用 Docker Hub、0008 以 Cloudflare Access 保護後端）。
 
 | 版本（key） | 原始碼 | compose 檔 / project | 本機 port（容器內） | PATH_BASE | CI / CD |
 |---|---|---|---|---|---|
@@ -22,7 +22,7 @@ image 放在 Docker Hub 的 private repo `docker.io/murmur20260202/devbuildsampl
 
 前端 `apps/web/` 部署在 Cloudflare Workers（Static Assets + 一支代轉 Worker，`devbuildsample-web`）：`/api/<代號>/*` 由 `src/worker.js` 代轉到對應的後端（`wrangler.jsonc` 的 `vars`），其他路徑回 `public/` 的靜態檔案。CI：`ci-web.yml`（GitHub Actions）；CD：Cloudflare **Workers Builds**（Git 整合，root directory `apps/web`、watch paths `apps/web/*`，設定在 Cloudflare dashboard，不在 repo 裡）。
 
-**各版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），契約寫在 `apps/web/public/openapi.yaml`（OpenAPI 3.1，Swagger UI 在前端的 `/docs/`），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，其他各版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒，其他各版微秒）、`GET /` 的 `name`（`api` / `api-<key>`）、`/items/%31` 這類 URL 編碼的 id（Node、PHP、Go 比對原始路徑回 404；.NET、Python、Java 的框架會先解碼當成 1）。
+**各版 API 必須保持一致**（欄位 snake_case、狀態碼、錯誤訊息），契約寫在 `apps/web/openapi.yaml`（OpenAPI 3.1，只放在 repo 裡、不對外提供），共用 `scripts/smoke-test.sh` 驗收。改其中一版的行為時，其他各版也要同步修改，並在 smoke test 補上檢查。已知且可接受的差異：時間戳精度（Node 毫秒，其他各版微秒）、`GET /` 的 `name`（`api` / `api-<key>`）、`/items/%31` 這類 URL 編碼的 id（Node、PHP、Go 比對原始路徑回 404；.NET、Python、Java 的框架會先解碼當成 1）。
 
 ```
 apps/api/src/server.js                    Node 版 API
@@ -68,10 +68,9 @@ scripts/vm/setup-maintenance.sh 部署主機：Docker 清理、swap、自動安�
 .github/actionlint.yaml                   宣告自訂 runner label（staging），供 actionlint 檢查
 .github/dependabot.yml                    每週檢查基底 image（Dockerfile、compose）、pip / Go 模組 / Maven 套件與 GitHub Actions 更新，開 PR；不提議主版本升級
 apps/web/public/                          前端靜態頁面（純 HTML/CSS/JS，無 build 步驟）
-apps/web/src/worker.js                    API 代轉，改寫 Location header
+apps/web/src/worker.js                    API 代轉：帶上 Cloudflare Access service token、改寫 Location header、被 Access 擋下時回 502
 apps/web/wrangler.jsonc                   Worker 設定：run_worker_first ["/api/*"]、vars
-apps/web/public/openapi.yaml              API 規格（各版共同契約）；servers 為各後端的 /api/<代號>（經 Worker 代轉）
-apps/web/public/docs/                     Swagger UI（jsDelivr 載入 swagger-ui-dist，固定版本 + SRI）
+apps/web/openapi.yaml                     API 規格（各版共同契約，CI lint；刻意不放在 public/，網站不提供 Swagger UI）
 apps/web/redocly.yaml                     OpenAPI 檢查規則（npm run lint:openapi）
 ```
 
@@ -107,6 +106,7 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - CI/CD 依路徑觸發（見各 workflow 的 `paths`）：改 `apps/api-dotnet/` 只跑 .NET 的 CI/CD；改 `scripts/smoke-test.sh` 或 `_build-deploy.yml` 會各版都跑。所有 CD 的 deploy 都在同一個 runner 上，會排隊依序執行。
 - 機敏設定：VM 上的 `/srv/myapp/.env`（owner `deploy`、`chmod 600`），**永不進 git**。必須包含 `POSTGRES_PASSWORD`。
 - 服務只綁 127.0.0.1，對外走 Cloudflare Tunnel `myapp-staging`，同一個網址用路徑分流：`https://api-staging.heitang.info/node/...` → `127.0.0.1:3000`、`/dotnet/...` → `127.0.0.1:3001`、`/php/...` → `127.0.0.1:3002`、`/py/...` → `127.0.0.1:3003`、`/go/...` → `127.0.0.1:3004`、`/java/...` → `127.0.0.1:3005`，其他路徑 404。設定在 `/etc/cloudflared/config.yml`，憑證在 `/etc/cloudflared/<tunnel-id>.json`（root、600），systemd 服務 `cloudflared`。
+- **後端受 Cloudflare Access 保護**：`api-staging.heitang.info` 整個 hostname 只接受 service token（`devbuildsample-web`）與擁有者 email 登入。前端 Worker 以 secrets `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`（設定在 Cloudflare dashboard，不進 git）帶上 token。CD 的驗證打 buildserver 本機 127.0.0.1，不經過 Access。直接對 staging 跑 `smoke-test.sh` 時要設這兩個環境變數。設定步驟見 README「保護後端」與 ADR 0008。
 - 容器 log 上限在各 compose 檔的 `x-logging`；新增服務時要加上 `logging: *logging`。
 - image tag 為 `<key>-<git SHA>`；回滾：Actions → 該版的 CD（例如 CD (Go)）→ Run workflow，`image_tag` 填舊 SHA（會跳過 build）。只能回滾到改用 Docker Hub 之後的 commit，之前的 image 在 GHCR。
 - CD 需要 repo secrets `DOCKERHUB_USERNAME`（`murmur20260202`）與 `DOCKERHUB_TOKEN`（Docker Hub 的 Read & Write access token），各 `cd-<key>.yml` 以 `secrets: inherit` 傳給 `_build-deploy.yml`。token 到期或外洩時：Docker Hub → Account settings → Personal access tokens 重新產生，再更新 GitHub secret。
@@ -136,7 +136,9 @@ sudo docker exec myapp-db-1 psql -U postgres -d app -c 'SELECT * FROM items;'   
 - **前端不直接呼叫 api-staging**：跨網域會被 CORS 擋，後端也沒有處理 `OPTIONS` 預檢。一律經 Worker 的 `/api/<backend>/` 代轉；新增後端時在 `worker.js` 的 `BACKENDS` 與 `wrangler.jsonc` 的 `vars` 各加一筆。
 - **前端不要再加 GitHub Actions 的部署 workflow**：部署已由 Workers Builds 負責，兩邊都部署會重複。Worker 名稱必須與 `wrangler.jsonc` 的 `name`（`devbuildsample-web`）一致，改名要同時改 dashboard。
 - **請求紀錄格式各版一致**：每個請求一行 `方法 路徑 狀態碼 耗時`（例：`POST /node/items 201 5ms`），路徑含前綴、不含 query string，成功的 `/health` 不記。CI 會檢查這個格式；改格式要各版一起改並更新各 `ci-<key>.yml`。.NET 的紀錄 middleware 必須放在 `UseExceptionHandler`、`UsePathBase` 之前，才拿得到完整路徑與最終狀態碼。
-- **Swagger UI 的 CDN 版本要連同 SRI 一起更新**：`docs/index.html` 的 `integrity` 雜湊取自 npm 上同版本的 `swagger-ui-dist`（`npm pack` 後 `openssl dgst -sha384 -binary <檔案> | openssl base64 -A`），只改版本不改雜湊，瀏覽器會拒絕載入。
+- **Access 的上線順序**：先建 service token → 設定 Worker secrets → 部署會帶 token 的 Worker → 最後才建立 Access 應用程式。反過來做，前端在 Worker 更新前會全部回 502（`backend access denied`）。
+- **Worker 不能把 Access 的轉址交給瀏覽器**：沒帶或帶錯 token 時，Access 會 302 到 `*.cloudflareaccess.com` 或回 401/403；瀏覽器跟著跨網域轉址只會得到看不懂的 CORS 錯誤，所以 `worker.js` 改回 502 並記錄 log。各版後端本身不會回 401/403。
+- **不提供 Swagger UI**：已移除 `public/docs/`，`openapi.yaml` 移出 `public/`（放在 `public/` 裡就會被當成靜態檔公開）；`ci-web.yml` 會檢查 `/docs/`、`/openapi.yaml` 回 404。
 - **基底 image 一律以 digest 鎖定**（`node:22-alpine@sha256:…`、`aspnet:10.0-alpine@sha256:…`、`frankenphp:1-php8.5-alpine@sha256:…`、`python:3.14-alpine@sha256:…`、`golang`/`alpine`、`maven`/`eclipse-temurin`、`postgres:17@sha256:…`）：曾因 `node:22-alpine` 沒鎖定，官方更新後 buildserver 要重新下載約 55MB 的基底層，加上下載速度只有約 100KB/s，一次部署花了 9 分鐘（.NET 同時只花 12 秒）。更新一律透過 Dependabot 的 PR，合併那次部署會比較久。改 `FROM` 或 compose 的 `image` 時要保留 `@sha256:`。
 - **Java 的編譯 image 不跟 Dependabot 換 JDK**：`maven:3-eclipse-temurin-25-alpine` 的版本號是開頭的 Maven 3，JDK 25 在後綴裡，Dependabot 曾開 PR 把它換成非 LTS 的 JDK 26（PR #12，已關閉）。`dependabot.yml` 對 `maven` 忽略小版本與修訂版更新，只保留 digest 更新；編譯與執行一律用同一個 Java LTS（目前 25），要換時手動改 Dockerfile、`pom.xml` 的 `java.version` 與 `ci-java.yml`。
 - **不要讓 postgres 自動升主版本**：17→18 資料目錄格式不相容，直接換 image 會讓 DB 起不來，需要 `pg_upgrade` 或匯出匯入。`dependabot.yml` 已忽略所有主版本升級。

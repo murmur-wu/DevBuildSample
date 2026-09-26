@@ -19,6 +19,25 @@ function json(status, body) {
   return Response.json(body, { status });
 }
 
+// 後端（api-staging）受 Cloudflare Access 保護，只接受帶 service token 的請求；
+// token 存在 Worker 的 secrets（CF_ACCESS_CLIENT_ID、CF_ACCESS_CLIENT_SECRET，設定在 Cloudflare dashboard，不進 git）。
+// 本機開發（.dev.vars 沒設）時不帶，直接打本機後端。
+function withAccessToken(request, env) {
+  if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
+    request.headers.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
+    request.headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
+  }
+  return request;
+}
+
+// 被 Access 擋下時會轉址到 <team>.cloudflareaccess.com 的登入頁，或回 401/403（各版後端本身不會回這兩個狀態碼）。
+// 不要把轉址交給瀏覽器（跨網域會變成看不懂的 CORS 錯誤），改回明確的 502
+function isAccessDenied(response) {
+  const location = response.headers.get('location') ?? '';
+  return (response.status >= 300 && response.status < 400 && /\.cloudflareaccess\.com\//.test(location))
+    || response.status === 401 || response.status === 403;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -34,10 +53,14 @@ export default {
     let upstream;
     try {
       // 沿用原請求的 method、headers、body；redirect 交給瀏覽器處理
-      upstream = await fetch(new Request(target, request), { redirect: 'manual' });
+      upstream = await fetch(withAccessToken(new Request(target, request), env), { redirect: 'manual' });
     } catch (err) {
       console.error(`proxy to ${target} failed: ${err}`);
       return json(502, { error: 'backend unreachable' });
+    }
+    if (isAccessDenied(upstream)) {
+      console.error(`proxy to ${target} denied by Cloudflare Access (status ${upstream.status}); check CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET`);
+      return json(502, { error: 'backend access denied' });
     }
 
     // 後端回的 Location 是它自己的路徑（例如 /node/items/1），改寫成前端看得到的 /api/node/items/1

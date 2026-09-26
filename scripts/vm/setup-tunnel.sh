@@ -152,14 +152,26 @@ fi
 
 failed=0
 URLS=()
+# 有設定 Cloudflare Access 的 service token 時，驗證請求帶上它（見 README「保護後端」）
+CURL_AUTH=()
+if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+  CURL_AUTH=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+fi
 for i in "${!HOSTS[@]}"; do
   url="https://${HOSTS[$i]}${PATHS[$i]}"
   URLS+=("$url")
   step "驗證 $url/health"
   ok=0
   for n in $(seq 1 12); do
-    if out=$(curl -fsS --max-time 5 "$url/health" 2>/dev/null); then
+    if out=$(curl -fsS --max-time 5 "${CURL_AUTH[@]}" "$url/health" 2>/dev/null); then
       echo "$out"
+      ok=1
+      break
+    fi
+    # 受 Cloudflare Access 保護又沒帶 service token：會被轉到登入頁或回 401/403，代表 tunnel 本身已經通了
+    status=$(curl -s -o /dev/null --max-time 5 -w '%{http_code} %{redirect_url}' "$url/health" 2>/dev/null)
+    if [[ $status =~ ^30[0-9]\ .*cloudflareaccess\.com || $status =~ ^40[13]\  ]]; then
+      echo "已連上，但受 Cloudflare Access 保護（${status%% *}）；要驗證內容請設定 CF_ACCESS_CLIENT_ID、CF_ACCESS_CLIENT_SECRET 後重跑"
       ok=1
       break
     fi
