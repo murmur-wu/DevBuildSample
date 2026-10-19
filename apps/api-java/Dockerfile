@@ -9,7 +9,7 @@ RUN mvn -B -q -DskipTests package \
  && java -Djarmode=tools -jar target/api.jar extract --layers --launcher --destination /extracted
 
 # alpine 版內建 busybox wget，healthcheck 用得到
-FROM eclipse-temurin:25-jre-alpine@sha256:2ca9adf44f5c29d28ecd26cf92d75cc0c66b7f32bfd839a4439e363a8b428af8
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61
 WORKDIR /app
 # 分層複製：依賴（約 22MB）很少變動，平常部署只需下載約 100KB 的應用程式層
 COPY --from=build /extracted/dependencies/ ./
