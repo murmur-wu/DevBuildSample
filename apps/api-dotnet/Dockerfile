@@ -1,5 +1,5 @@
 # 基底 image 以 digest 鎖定：平常部署只需下載幾 KB 的程式層；更新由 Dependabot 開 PR（.github/dependabot.yml）
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:35d40304542c8689331f8cab17c65926cdf48fe711e289321d71924b230a7d29 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:afd0ccff9d306812a69ef0f47458376b6acb544ae866cfc4b8d28ff0eef35ea7 AS build
 WORKDIR /src
 COPY src/Api/Api.csproj src/Api/
 RUN dotnet restore src/Api/Api.csproj
@@ -7,7 +7,7 @@ COPY src/Api/ src/Api/
 RUN dotnet publish src/Api/Api.csproj -c Release -o /app --no-restore
 
 # alpine 版內建 busybox wget，healthcheck 用得到；標準 aspnet image 沒有 curl/wget
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine@sha256:f62a272ac1b46e83f56b8ed0416572f31cd1128e2c4a5e63eb34d348e4a36095
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine@sha256:254fe017495996d3abcc487ffacdcce2b73affb380d3af87af12c8dff41fe0b0
 WORKDIR /app
 COPY --from=build /app .
 ARG APP_VERSION=dev

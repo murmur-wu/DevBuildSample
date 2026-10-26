@@ -1,5 +1,5 @@
 # 基底 image 以 digest 鎖定：平常部署只需下載程式層；更新由 Dependabot 開 PR（.github/dependabot.yml）
-FROM maven:3-eclipse-temurin-25-alpine@sha256:eedc40918742f8a64d876a47db1fea211aa66e5f8ecd3bbc7ec9228a62e431d6 AS build
+FROM maven:3-eclipse-temurin-25-alpine@sha256:5d74a0f788b3cca0d36a4a3f358eadc8b0dd6f2f4f2dfcd0091b0cd5934d3002 AS build
 WORKDIR /src
 # 先只下載依賴（pom.xml 沒變時可沿用這一層的快取）
 COPY pom.xml .
@@ -9,7 +9,7 @@ RUN mvn -B -q -DskipTests package \
  && java -Djarmode=tools -jar target/api.jar extract --layers --launcher --destination /extracted
 
 # alpine 版內建 busybox wget，healthcheck 用得到
-FROM eclipse-temurin:25-jre-alpine@sha256:2ca9adf44f5c29d28ecd26cf92d75cc0c66b7f32bfd839a4439e363a8b428af8
+FROM eclipse-temurin:25-jre-alpine@sha256:b7528962e65d43064d8a8b67ba175367896bc948363ea2d3fcd7f10d34e1f048
 WORKDIR /app
 # 分層複製：依賴（約 22MB）很少變動，平常部署只需下載約 100KB 的應用程式層
 COPY --from=build /extracted/dependencies/ ./
